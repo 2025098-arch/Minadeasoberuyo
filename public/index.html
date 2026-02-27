@@ -586,6 +586,10 @@
       renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); 
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; document.getElementById('canvas-container').appendChild(renderer.domElement);
 
+      // アニメーションループ開始
+      lastTime = Date.now();
+      animate();
+
       const light = new THREE.DirectionalLight(0xffffff, 1.2); light.position.set(10, 20, 10); light.castShadow = true; 
       light.shadow.camera.left = -30; light.shadow.camera.right = 30; light.shadow.camera.top = 30; light.shadow.camera.bottom = -30;
       scene.add(light); scene.add(new THREE.AmbientLight(0x606060));
@@ -594,7 +598,17 @@
       const pCount = data.playersData.length;
       data.playersData.forEach((pd, idx) => {
         const obj = createPlayerModel(pd.skin, pd.uid !== myUID, pd.customSkinData);
-        if (pd.uid === myUID) { playerObj = obj; scene.add(playerObj); } else { scene.add(obj); otherPlayers[pd.uid] = obj; }
+        if (pd.uid === myUID) { 
+          playerObj = obj; 
+          scene.add(playerObj); 
+          // 初期位置
+          playerObj.position.set(0, 0, 0);
+        } else { 
+          scene.add(obj); 
+          otherPlayers[pd.uid] = obj; 
+          // 他プレイヤーの初期位置（適当に散らす）
+          obj.position.set((idx + 1) * 2, 0, 0);
+        }
 
         // ⑥ ボンバーラリー初期配置（円形）
         if(currentGameType === 'bomber') {
@@ -677,7 +691,10 @@
     });
 
     function animate() {
-      if(!gameActive) return; animationId = requestAnimationFrame(animate);
+      if(!gameActive) return; 
+      animationId = requestAnimationFrame(animate);
+      if (!playerObj || !scene || !camera) return;
+
       const now = Date.now(); const dt = (now - lastTime) / 1000; lastTime = now;
       let speedMult = (myStatus && myStatus.equippedItem === '👟スピード靴') ? 1.5 : 1.0;
 
