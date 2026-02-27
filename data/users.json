@@ -1,0 +1,43 @@
+{
+  "UID_mm48i5dlsvysv": {
+    "id": "UID_mm48i5dlsvysv",
+    "name": "あ",
+    "password": "1111",
+    "points": null,
+    "exp": 0,
+    "level": 1,
+    "skins": [
+      "🟦初期スキン",
+      "🎨マイオリジナル"
+    ],
+    "items": [],
+    "equippedSkin": "🎨マイオリジナル",
+    "equippedItem": "",
+    "customSkinData": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAQKADAAQAAAABAAAAQAAAAABGUUKwAAABp0lEQVR4Ae1ZW3KDMAwMnR6lV8iZeqacqVfIXdo6MzALE3uQrDW2JX4wYKTd1fpBsvz+HzfHx4dj7i/qIUA4wLkCMQScG+Dm3gGfTAfcH88t/M/319buqeHeASFAT3a8Agt1DrAixJxLYghYVYkVB6vPyDGUAxhLKXUOYAC2dgFVALRvr2IMNQSsq5/ihQAMVUeKGQ4YqVoMrOEAhqojxQwHtKoWbopa5TyTJxxwRiVtn163v8jHvQOW+HcY/eCw7X4IhAAOXb+jTP1FaJepwQVuts4uwTEEGhSm6xTuHVA9B2jGXU+WMHUAitETyRIWUwFKidjPtOJXC3BcbhIQLRgrkY6YSnGrBUjBU0JJ0hIgzbMawU0E0IBmvSMtBOVzGCsiBSQRBvOs70nzVS+Da+Krz1LiK97hBHhX9ZWM5kwZAggEAWurhDEwtjYexmjuACSTI3CmD5KoaTcXAMEiUbxfaudEK71TekYXwAKwRYycCPQ5IJc43c85gEn4iOdSAY5grriebicoFTEEkCo2W/9wwGwVlfIJB0gVm61/OGC2ikr5uHfAHzuzW3tmnbrOAAAAAElFTkSuQmCC",
+    "friends": [],
+    "friendRequests": [],
+    "mailBox": [],
+    "history": [],
+    "createdAt": "2026-02-27T01:49:29.913Z"
+  },
+  "UID_mm49fahz46o4j": {
+    "id": "UID_mm49fahz46o4j",
+    "name": "い",
+    "password": "1111",
+    "points": null,
+    "exp": 0,
+    "level": 1,
+    "skins": [
+      "🟦初期スキン"
+    ],
+    "items": [],
+    "equippedSkin": "🟦初期スキン",
+    "equippedItem": "",
+    "customSkinData": null,
+    "friends": [],
+    "friendRequests": [],
+    "mailBox": [],
+    "history": [],
+    "createdAt": "2026-02-27T02:15:16.199Z"
+  }
+}
