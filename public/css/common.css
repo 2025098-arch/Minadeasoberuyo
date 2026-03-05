@@ -1,0 +1,66 @@
+/* public/css/common.css */
+
+/* ゲーム全体の色設定（ブロスタのようなポップで少しダークな色合い） */
+:root {
+    --bg-dark: #1a1a2e;
+    --panel-bg: #16213e;
+    --text-light: #ffffff;
+    --accent-blue: #0f3460;
+    --accent-red: #e94560;
+    --accent-yellow: #f9a826;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    overflow: hidden; /* 画面のスクロールをなくす */
+}
+
+/* 画面の切り替え用クラス（超重要） */
+.screen {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+}
+.screen.active {
+    display: block;
+}
+.hidden {
+    display: none !important;
+}
+
+/* 基本のボタンデザイン */
+button {
+    cursor: pointer;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    transition: transform 0.1s, filter 0.2s;
+}
+button:hover {
+    filter: brightness(1.2);
+}
+button:active {
+    transform: scale(0.95); /* 押したときに少しへこむ */
+}
+
+.btn-primary {
+    background-color: var(--accent-red);
+    color: white;
+    padding: 15px 20px;
+    font-size: 1.2rem;
+}
+.btn-secondary {
+    background-color: var(--accent-blue);
+    color: white;
+    padding: 10px 15px;
+}
+.message-error {
+    color: var(--accent-red);
+    font-weight: bold;
+    height: 1.5em;
+    margin: 10px 0;
+}

@@ -1,544 +1,632 @@
+// index.js
 const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
-const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
-// 静的ファイルの提供設定（publicフォルダ内のファイルをクライアントに送信）
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// ==========================================
+// 🚨 【超重要】サーバーの起動方法について 🚨
+// ==========================================
+// Replitの「Run」ボタン（緑色）は押さないでください！
+// 右側の「Shell」タブを開き、以下のコマンドを手打ちしてEnterを押してください：
+// node index.js
+// ==========================================
 
 // ==========================================
-// 1. サーバー設定とデータ永続化（ファイル保存）機能
+// 🗄️ データベース（JSONファイル）管理システム【完全強化版】
 // ==========================================
-const GLOBAL_CONFIG = {
-    INITIAL_POINTS: 1000,
-    LEVEL_UP_EXP: 100,
-    MAX_PLAYERS_PER_ROOM: 8,
-    FPS: 20 // サーバー側の物理演算ループ（1秒間に20回計算）
+const dataDir = path.join(process.cwd(), 'data');
+
+// dataフォルダが存在しない場合は作成
+if (!fs.existsSync(dataDir)) {
+    console.log("📁 dataフォルダが存在しないため作成します。");
+    fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPaths = {
+    users: path.join(dataDir, 'users.json'),
+    mail: path.join(dataDir, 'mail.json'),
+    friends: path.join(dataDir, 'friends.json'),
+    history: path.join(dataDir, 'history.json')
 };
 
-// データ保存用ファイルのパス設定
-const DATA_DIR = path.join(__dirname, 'data');
-const DATA_FILE = path.join(DATA_DIR, 'users.json');
+// 🚀 【新規追加】メモリキャッシュ
+// 毎回ファイルを読み込まず、サーバー起動中は常にここに最新のデータを保持（超高速化＆データ消失防止）
+const dbCache = {
+    users: {}, mail: {}, friends: {}, history: {}
+};
 
-// データベース変数
-let users = {}; // 全ユーザー情報
-const rooms = {}; // 稼働中のルーム情報（ルームは一時データなのでメモリ上のみ）
-
-// 起動時にデータを読み込む
-function loadDatabase() {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-    if (fs.existsSync(DATA_FILE)) {
+// サーバー起動時に1回だけファイルを読み込み、キャッシュに格納
+Object.keys(dbPaths).forEach(dbName => {
+    const filePath = dbPaths[dbName];
+    if (!fs.existsSync(filePath)) {
+        // ファイルがなければ空っぽで作成し、キャッシュも空にする
+        fs.writeFileSync(filePath, JSON.stringify({}, null, 4), 'utf8');
+        dbCache[dbName] = {};
+    } else {
+        // ファイルがあれば読み込む
         try {
-            const rawData = fs.readFileSync(DATA_FILE, 'utf8');
-            users = JSON.parse(rawData);
-            console.log(`[DB] ユーザーデータを読み込みました (総ユーザー数: ${Object.keys(users).length})`);
-        } catch (e) {
-            console.error('[DB Error] データ読み込み失敗。新規データとして開始します。', e);
-            users = {};
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            // 中身が空だった場合の対策
+            dbCache[dbName] = fileContent.trim() ? JSON.parse(fileContent) : {};
+        } catch (err) {
+            console.error(`❌ ${dbName}の読み込みに失敗。初期化します。`, err);
+            dbCache[dbName] = {};
         }
     }
+});
+
+// 💡 変更点1：ファイルではなく、メモリから爆速でデータを返す
+function loadDB(dbName) {
+    return dbCache[dbName]; 
 }
 
-// データをファイルに書き込んで永続化する（重要な変更があった際に呼び出す）
-function saveDatabase() {
+// 💡 変更点2：メモリを最新に更新しつつ、ファイルにも確実に上書きする
+function saveDB(dbName, data) {
+    dbCache[dbName] = data; // まずメモリを最新にする（強制再起動されても直前の処理はメモリに残る）
     try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(users, null, 2));
-    } catch (e) {
-        console.error('[DB Error] データの保存に失敗しました:', e);
+        fs.writeFileSync(dbPaths[dbName], JSON.stringify(data, null, 4), 'utf8');
+        console.log(`📂 [確認用] ${dbName} をメモリとファイルに保存しました: ${dbPaths[dbName]}`);
+    } catch (err) {
+        console.error(`❌ ${dbName} の保存に失敗しました:`, err);
     }
 }
 
-loadDatabase(); // サーバー起動時に一回だけ実行
+function generatePlayerID() {
+    return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
 
-// ==========================================
-// 2. ユーザー管理・報酬システム
-// ==========================================
-// ユーザーオブジェクトの完全な初期化
-function createInitialUser(id, name, password) {
+function getEnrichedFriendsData(userId, friendsDB, usersDB) {
+    const myFriends = friendsDB[userId] || { list: [], requestsReceived: [], requestsSent: [], history: [] };
     return {
-        id: id,
-        name: name,
-        password: password, // ※本来はハッシュ化推奨ですが、学習・プロトタイプ用として平文
-        points: GLOBAL_CONFIG.INITIAL_POINTS,
-        exp: 0,
-        level: 1,
-        skins: ['🟦初期スキン'],
-        items: [],
-        equippedSkin: '🟦初期スキン',
-        equippedItem: '',
-        customSkinData: null,
-        friends: [], // フレンドのUIDリスト
-        friendRequests: [], // 届いている申請 {id, name}
-        mailBox: [], // 受信メール {id, from, type, text, claimed...}
-        history: [], // 戦績（過去の試合結果）
-        createdAt: new Date().toISOString()
+        list: myFriends.list.map(id => ({ 
+            id, 
+            nickname: usersDB[id]?.nickname || "不明", 
+            level: usersDB[id]?.level || 1,
+            trophies: usersDB[id]?.trophies || 0,
+            rankingPublic: usersDB[id]?.settings?.rankingPublic || false
+        })),
+        requestsReceived: myFriends.requestsReceived.map(id => ({ 
+            id, 
+            nickname: usersDB[id]?.nickname || "不明" 
+        })),
+        history: myFriends.history 
     };
 }
 
-// クライアントへ最新状態を同期する
-function broadcastUserStatus(socket, user) {
-    if (!user) return;
-    // 状態が変わるたびに保存を実行してデータロストを防ぐ
-    saveDatabase();
-    socket.emit('updateFullStatus', user);
-}
-
-// 経験値・ポイントの計算とレベルアップ処理
-function processGameRewards(userId, expGain, pointGain, socket) {
-    const user = users[userId];
-    if (!user) return;
-
-    user.points += pointGain;
-    user.exp += expGain;
-
-    // 複数レベルの一気上がりにも対応するループ処理
-    let hasLeveledUp = false;
-    while (user.exp >= GLOBAL_CONFIG.LEVEL_UP_EXP) {
-        user.level++;
-        user.exp -= GLOBAL_CONFIG.LEVEL_UP_EXP;
-        hasLeveledUp = true;
-
-        // レベル5到達時の報酬処理（拡張しやすいように独立）
-        if (user.level >= 5 && !user.skins.includes('👑覇者スキン')) {
-            user.skins.push('👑覇者スキン');
-        }
-    }
-
-    if (hasLeveledUp && socket) {
-        socket.emit('levelUpEvent', { newLevel: user.level });
-    }
-    broadcastUserStatus(socket, user);
+function getEnrichedMailData(userId, mailDB, usersDB) {
+    const myMail = mailDB[userId] || { messages: [] };
+    return {
+        messages: myMail.messages.map(m => ({
+            ...m,
+            senderNickname: m.senderId === "SYSTEM" ? "運営" : (usersDB[m.senderId]?.nickname || "不明")
+        })).reverse() 
+    };
 }
 
 // ==========================================
-// 3. リアルタイム通信（Socket.io）メインロジック
+// 🌐 Socket.io 通信システム
 // ==========================================
 io.on('connection', (socket) => {
-    let currentUser = null; // この通信を繋いでいるユーザー
-    let currentRoomId = null; // 現在入っている部屋
-    // --- ここから追加：一人で練習 ---
-    socket.on('startPractice', (gameType) => {
-        const practiceRoomId = 'practice_' + socket.id;
-        socket.join(practiceRoomId);
-        socket.currentRoom = practiceRoomId;
-        const playerData = {
-            uid: socket.uid,
-            name: socket.playerName || 'プレイヤー',
-            skin: socket.skin || 'デフォルト',
-            customSkinData: socket.customSkinData || null
-        };
-        socket.emit('gameStart', { 
-            gameType: gameType, 
-            isPractice: true,
-            playersData: [playerData] 
-        });
-    });
+    console.log(`🔌 新しいプレイヤーが接続しました: ${socket.id}`);
 
-    // --- ここから追加：試合履歴 ---
-    socket.on('reqHistory', () => {
-        const history = (users[socket.uid] && users[socket.uid].matchHistory) ? users[socket.uid].matchHistory : [];
-        socket.emit('showHistory', history);
-    });
-
-    // --- ここから追加：ショップ購入処理 ---
-    socket.on('buyItem', (data) => {
-        const user = users[socket.uid];
-        if (!user) {
-            socket.emit('buyFail', 'ユーザー情報が見つかりません。');
-            return;
-        }
-        const { type, id, price } = data;
-        if (user.ownedItems && user.ownedItems[type] && user.ownedItems[type].includes(id)) {
-            socket.emit('buyFail', 'すでに所持しているアイテムです。');
-            return;
-        }
-        if (user.points >= price) {
-            user.points -= price;
-            if (!user.ownedItems) user.ownedItems = {};
-            if (!user.ownedItems[type]) user.ownedItems[type] = [];
-            user.ownedItems[type].push(id);
-            socket.emit('buySuccess', { type: type, id: id });
-            socket.emit('statusUpdate', { points: user.points, exp: user.exp });
-        } else {
-            socket.emit('buyFail', 'ポイントが足りません。');
-        }
-    });
-    // --- 認証セクション ---
+    // ================= 新規登録 =================
     socket.on('register', (data) => {
-        if (!data.name || !data.password) return socket.emit('authError', '入力が空です');
-        if (Object.values(users).some(u => u.name === data.name)) {
-            return socket.emit('authError', 'その名前は既に使用されています');
-        }
-        // 衝突しにくいUIDの生成
-        const id = 'UID_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-        users[id] = createInitialUser(id, data.name, data.password);
-        currentUser = users[id];
+        const { nickname, pin, settings = {} } = data;
+        let users = loadDB('users');
 
-        socket.emit('authSuccess', { name: data.name, password: data.password });
-        socket.emit('initData', id);
-        broadcastUserStatus(socket, currentUser);
+        const isDuplicate = Object.values(users).some(user => user.nickname === nickname);
+        if (isDuplicate) {
+            socket.emit('authError', 'そのニックネームは既に使用されています。別の名前をお試しください。');
+            return;
+        }
+
+        let newId;
+        do {
+            newId = generatePlayerID();
+        } while (users[newId]); 
+
+        // 資料の要件をすべて満たした初期ステータス
+        const newUser = {
+            id: newId,
+            nickname: nickname,
+            pin: pin,
+            coins: 10,
+            trophies: 0,
+            level: 1,
+            gachaTickets: 1,
+            characters: ["base_char"],
+            skins: { "base_char": ["base_white"] },
+            equipped: { character: "base_char", skin: "base_white", items: [] },
+            inventory: [],
+            settings: {
+                rankingPublic: settings.rankingPublic !== undefined ? settings.rankingPublic : false,
+                reqHistory: settings.reqHistory !== undefined ? settings.reqHistory : false,
+                reqRanking: settings.reqRanking !== undefined ? settings.reqRanking : false
+            },
+            loginStreak: 1,
+            lastLoginDate: new Date().toISOString().split('T')[0],
+            // ★追加: ログインボーナスとロードマップの管理
+            canClaimLoginBonus: true, 
+            claimedRoadmapRewards: [] 
+        };
+
+        users[newId] = newUser;
+        saveDB('users', users);
+
+        let friendsDB = loadDB('friends');
+        friendsDB[newId] = { list: [], requestsReceived: [], requestsSent: [], history: [] };
+        saveDB('friends', friendsDB);
+
+        let historyDB = loadDB('history');
+        historyDB[newId] = { matches: [] };
+        saveDB('history', historyDB);
+
+        let mailDB = loadDB('mail');
+        mailDB[newId] = { messages: [] };
+        mailDB[newId].messages.push({
+            id: crypto.randomBytes(4).toString('hex'),
+            senderId: "SYSTEM",
+            content: "ゲームへようこそ！初期報酬として10コインをプレゼントします！",
+            item: null,
+            timestamp: new Date().toISOString(),
+            isRead: false
+        });
+        saveDB('mail', mailDB);
+
+        console.log(`✨ 新規アカウント作成＆保存成功: ${nickname} (ID: ${newId})`);
+        socket.userId = newId;
+        socket.emit('authSuccess', newUser);
     });
 
+    // ================= ログイン =================
     socket.on('login', (data) => {
-        const user = Object.values(users).find(u => u.name === data.name && u.password === data.password);
-        if (!user) return socket.emit('authError', '名前またはパスワードが間違っています');
+        const { nickname, pin } = data; 
+        let users = loadDB('users');
 
-        currentUser = user;
-        socket.emit('authSuccess', { name: data.name, password: data.password });
-        socket.emit('initData', user.id);
-        broadcastUserStatus(socket, currentUser);
-    });
+        const searchKey = (nickname || "").trim().toUpperCase();
+        const userEntry = Object.entries(users).find(([id, user]) => 
+            user.nickname === nickname || id === searchKey
+        );
 
-    // --- カスタマイズ・ショップセクション ---
-    socket.on('saveCustomSkin', (base64Data) => {
-        if (!currentUser) return;
-        currentUser.customSkinData = base64Data;
-        if (!currentUser.skins.includes('🎨マイオリジナル')) {
-            currentUser.skins.push('🎨マイオリジナル');
+        if (!userEntry) {
+            socket.emit('authError', '指定されたID(またはニックネーム)のプレイヤーはいませんでした。');
+            return;
         }
-        currentUser.equippedSkin = '🎨マイオリジナル';
-        broadcastUserStatus(socket, currentUser);
-    });
 
-    socket.on('buy', (payload) => {
-        if (!currentUser) return;
-        const { type, name, price } = payload;
-
-        if (currentUser.points < price) return socket.emit('serverMessage', 'ポイントが足りません');
-        if (type === 'skin' && currentUser.skins.includes(name)) return socket.emit('serverMessage', '既に所持しています');
-        if (type === 'item' && currentUser.items.includes(name)) return socket.emit('serverMessage', '既に所持しています');
-
-        // 支払いとアイテム追加
-        currentUser.points -= price;
-        if (type === 'skin') currentUser.skins.push(name);
-        if (type === 'item') currentUser.items.push(name);
-
-        broadcastUserStatus(socket, currentUser);
-        socket.emit('serverMessage', `${name} を購入しました！`);
-    });
-
-    socket.on('equip', (payload) => {
-        if (!currentUser) return;
-        if (payload.type === 'skin' && currentUser.skins.includes(payload.name)) {
-            currentUser.equippedSkin = payload.name;
+        const [userId, userData] = userEntry;
+        if (userData.pin !== pin) {
+            socket.emit('authError', 'PINが間違っています。');
+            return;
         }
-        if (payload.type === 'item' && currentUser.items.includes(payload.name)) {
-            // 同じものを選択したら外す（トグル機能）
-            currentUser.equippedItem = (currentUser.equippedItem === payload.name) ? '' : payload.name;
+
+        const today = new Date().toISOString().split('T')[0];
+        if (userData.lastLoginDate !== today) {
+            // 前日のログインかチェックして連続日数を計算
+            const lastDate = new Date(userData.lastLoginDate);
+            const currentDate = new Date(today);
+            const diffDays = Math.ceil(Math.abs(currentDate - lastDate) / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) {
+                userData.loginStreak += 1; // 連続ログイン
+            } else {
+                userData.loginStreak = 1; // 途切れたらリセット
+            }
+
+            userData.lastLoginDate = today;
+            userData.canClaimLoginBonus = true; // ★自動でコインを足さず、フラグを立てる
+            saveDB('users', users);
+            socket.emit('notification', '🎁 今日のログインボーナスが届いています！報酬画面から受け取ってください！');
         }
-        broadcastUserStatus(socket, currentUser);
+
+        console.log(`🔓 ログイン成功: ${userData.nickname} (ID: ${userId})`);
+        socket.userId = userId;
+        socket.emit('authSuccess', userData);
     });
 
-    // --- ソーシャルセクション（フレンド・メール） ---
+    // ================= 設定・プロフィール更新（完全版） =================
+    socket.on('updateSettings', (newSettings) => {
+        if (!socket.userId) return;
+        let users = loadDB('users');
+        let user = users[socket.userId];
+
+        if (user) {
+            // 設定（チェックボックス等）の更新
+            if (newSettings.settings) {
+                user.settings = { ...user.settings, ...newSettings.settings };
+            }
+            // ニックネームの変更（重複チェック付き）
+            if (newSettings.nickname && newSettings.nickname !== user.nickname) {
+                const isDuplicate = Object.values(users).some(u => u.nickname === newSettings.nickname);
+                if (isDuplicate) {
+                    socket.emit('notification', 'そのニックネームは既に使用されています。');
+                    return; // 名前変更はキャンセルするが、エラーにはしない
+                }
+                user.nickname = newSettings.nickname;
+            }
+            // PINの変更
+            if (newSettings.pin && newSettings.pin.length === 6 && !isNaN(newSettings.pin)) {
+                user.pin = newSettings.pin;
+            }
+
+            saveDB('users', users);
+            socket.emit('authSuccess', user); // UI側のcurrentUserを最新化
+            socket.emit('notification', 'プロフィール・設定を保存しました！');
+
+            // 総合順位に名前変更を即座に反映させるためランキングも更新
+            const rankedUsers = Object.values(users).sort((a, b) => b.trophies - a.trophies);
+            io.emit('rankingDataUpdated', { /* 全体に更新をかける処理が必要になりますが、今回は簡易的に再取得させます */ });
+        }
+    });
+
+    // ================= 🏆 総合ランキング機能 =================
+    socket.on('getRanking', () => {
+        if (!socket.userId) return;
+        const usersDB = loadDB('users');
+
+        let rankIndex = 1;
+        const rankedUsers = Object.values(usersDB)
+            .sort((a, b) => b.trophies - a.trophies)
+            .map(u => ({ ...u, rank: rankIndex++ }));
+
+        const myRankData = rankedUsers.find(u => u.id === socket.userId);
+        const myRank = myRankData ? myRankData.rank : '圏外';
+
+        const top10 = rankedUsers
+            .filter(u => u.settings && u.settings.rankingPublic)
+            .slice(0, 10)
+            .map(u => ({
+                id: u.id,
+                nickname: u.nickname,
+                trophies: u.trophies,
+                level: u.level,
+                rank: u.rank,
+                reqRanking: u.settings.reqRanking 
+            }));
+
+        socket.emit('rankingDataUpdated', { top10, myRank });
+    });
+
+    // ================= 👥 フレンド機能 =================
+    socket.on('getFriendsData', () => {
+        if (!socket.userId) return;
+        const friendsDB = loadDB('friends');
+        const usersDB = loadDB('users');
+        socket.emit('friendsDataUpdated', getEnrichedFriendsData(socket.userId, friendsDB, usersDB));
+    });
+
     socket.on('sendFriendRequest', (targetId) => {
-        if (!currentUser || !users[targetId] || targetId === currentUser.id) return;
+        if (!socket.userId) return;
 
-        const targetUser = users[targetId];
-        // 既に申請済みか、既にフレンドかチェック
-        const alreadyRequested = targetUser.friendRequests.some(r => r.id === currentUser.id);
-        const alreadyFriends = currentUser.friends.includes(targetId);
+        targetId = (targetId || "").trim().toUpperCase();
 
-        if (!alreadyRequested && !alreadyFriends) {
-            targetUser.friendRequests.push({ id: currentUser.id, name: currentUser.name });
-            saveDatabase(); // 相手のデータを書き換えたので強制保存
-            socket.emit('serverMessage', 'フレンド申請を送信しました');
-        } else {
-            socket.emit('serverMessage', '申請済み、または既にフレンドです');
+        if (socket.userId === targetId) {
+            socket.emit('friendRequestResult', { success: false, message: '自分自身には申請できません。' });
+            return;
+        }
+
+        const usersDB = loadDB('users');
+        if (!usersDB[targetId]) {
+            socket.emit('friendRequestResult', { success: false, message: '指定されたIDのプレイヤーは見つかりませんでした。' });
+            return;
+        }
+
+        let friendsDB = loadDB('friends');
+        let myFriends = friendsDB[socket.userId] || { list: [], requestsReceived: [], requestsSent: [], history: [] };
+        let targetFriends = friendsDB[targetId] || { list: [], requestsReceived: [], requestsSent: [], history: [] };
+
+        if (myFriends.list.includes(targetId)) {
+            socket.emit('friendRequestResult', { success: false, message: '既にフレンドです。' });
+            return;
+        }
+        if (targetFriends.requestsReceived.includes(socket.userId) || myFriends.requestsReceived.includes(targetId)) {
+            socket.emit('friendRequestResult', { success: false, message: '既に申請中、または相手から申請が届いています。' });
+            return;
+        }
+
+        targetFriends.requestsReceived.push(socket.userId);
+        const timestamp = new Date().toISOString();
+        myFriends.history.push({ targetId: targetId, targetNickname: usersDB[targetId].nickname, type: 'sent', status: '確認中', timestamp });
+        targetFriends.history.push({ targetId: socket.userId, targetNickname: usersDB[socket.userId].nickname, type: 'received', status: '確認中', timestamp });
+
+        friendsDB[socket.userId] = myFriends;
+        friendsDB[targetId] = targetFriends;
+        saveDB('friends', friendsDB);
+
+        socket.emit('friendRequestResult', { success: true, message: 'フレンド申請を送信しました！' });
+        socket.emit('friendsDataUpdated', getEnrichedFriendsData(socket.userId, friendsDB, usersDB));
+
+        const targetSocket = Array.from(io.sockets.sockets.values()).find(s => s.userId === targetId);
+        if (targetSocket) {
+            targetSocket.emit('friendsDataUpdated', getEnrichedFriendsData(targetId, friendsDB, usersDB));
+            targetSocket.emit('notification', '新しいフレンド申請が届きました！');
         }
     });
 
-    socket.on('acceptFriend', (targetId) => {
-        if (!currentUser || !users[targetId]) return;
+    socket.on('respondFriendRequest', (data) => {
+        if (!socket.userId) return;
+        const { targetId, accept } = data;
 
-        // 申請リストから削除
-        currentUser.friendRequests = currentUser.friendRequests.filter(r => r.id !== targetId);
+        let friendsDB = loadDB('friends');
+        let usersDB = loadDB('users');
+        let myFriends = friendsDB[socket.userId];
+        let targetFriends = friendsDB[targetId];
 
-        // 相互にフレンドリストへ追加
-        if (!currentUser.friends.includes(targetId)) currentUser.friends.push(targetId);
-        if (!users[targetId].friends.includes(currentUser.id)) users[targetId].friends.push(currentUser.id);
+        myFriends.requestsReceived = myFriends.requestsReceived.filter(id => id !== targetId);
+        const newStatus = accept ? '承認' : '拒否';
 
-        saveDatabase();
-        broadcastUserStatus(socket, currentUser);
+        let myHistory = myFriends.history.find(h => h.targetId === targetId && h.status === '確認中');
+        if (myHistory) myHistory.status = newStatus;
+
+        let targetHistory = targetFriends.history.find(h => h.targetId === socket.userId && h.status === '確認中');
+        if (targetHistory) targetHistory.status = newStatus;
+
+        if (accept) {
+            if (!myFriends.list.includes(targetId)) myFriends.list.push(targetId);
+            if (!targetFriends.list.includes(socket.userId)) targetFriends.list.push(socket.userId);
+            socket.emit('friendRequestResult', { success: true, message: 'フレンド申請を承認しました！' });
+        } else {
+            socket.emit('friendRequestResult', { success: true, message: 'フレンド申請を拒否しました。' });
+        }
+
+        saveDB('friends', friendsDB);
+
+        socket.emit('friendsDataUpdated', getEnrichedFriendsData(socket.userId, friendsDB, usersDB));
+        const targetSocket = Array.from(io.sockets.sockets.values()).find(s => s.userId === targetId);
+        if (targetSocket) {
+            targetSocket.emit('friendsDataUpdated', getEnrichedFriendsData(targetId, friendsDB, usersDB));
+            if(accept) targetSocket.emit('notification', `${usersDB[socket.userId].nickname}さんとフレンドになりました！`);
+        }
+    });
+
+    // ================= ✉️ メール機能 =================
+    socket.on('getMailData', () => {
+        if (!socket.userId) return;
+        const mailDB = loadDB('mail');
+        const usersDB = loadDB('users');
+        socket.emit('mailDataUpdated', getEnrichedMailData(socket.userId, mailDB, usersDB));
     });
 
     socket.on('sendMail', (data) => {
-        if (!currentUser || !users[data.targetId]) return;
+        if (!socket.userId) return;
+        const { targetId, content, item } = data;
 
-        const newMail = {
-            id: 'MAIL_' + Date.now(),
-            from: currentUser.name,
-            type: data.type, // 'text', 'point', 'item'
-            text: data.text,
-            amount: data.amount || 0,
-            itemName: data.itemName || '',
-            claimed: false,
-            date: new Date().toISOString()
+        const friendsDB = loadDB('friends');
+        const myFriends = friendsDB[socket.userId] || { list: [] };
+
+        if (!myFriends.list.includes(targetId)) {
+            socket.emit('mailSendResult', { success: false, message: 'エラー: フレンドにのみメールを送信できます。' });
+            return;
+        }
+
+        const usersDB = loadDB('users');
+        const senderNickname = usersDB[socket.userId].nickname;
+
+        let mailDB = loadDB('mail');
+        if (!mailDB[targetId]) mailDB[targetId] = { messages: [] };
+
+        const newMessage = {
+            id: crypto.randomBytes(4).toString('hex'),
+            senderId: socket.userId,
+            content: content,
+            item: item || null,
+            timestamp: new Date().toISOString(),
+            isRead: false
         };
 
-        // ポイント添付の場合は送信者から引く
-        if (data.type === 'point') {
-            if (currentUser.points < data.amount) return socket.emit('serverMessage', 'ポイントが足りません');
-            currentUser.points -= data.amount;
-            broadcastUserStatus(socket, currentUser);
-        }
+        mailDB[targetId].messages.push(newMessage);
+        saveDB('mail', mailDB);
 
-        users[data.targetId].mailBox.push(newMail);
-        saveDatabase();
-        socket.emit('serverMessage', 'メールを送信しました');
-    });
+        socket.emit('mailSendResult', { success: true, message: 'メールを送信しました！' });
 
-    socket.on('claimMail', (mailId) => {
-        if (!currentUser) return;
-        const mail = currentUser.mailBox.find(m => m.id === mailId);
-        if (!mail || mail.claimed) return;
-
-        if (mail.type === 'point') {
-            currentUser.points += mail.amount;
-        } else if (mail.type === 'item') {
-            if (!currentUser.items.includes(mail.itemName)) currentUser.items.push(mail.itemName);
-        }
-
-        mail.claimed = true;
-        broadcastUserStatus(socket, currentUser);
-    });
-
-    // --- ゲームエンジン・マッチングセクション ---
-    function setupRoom(code, gameType, isPublic) {
-        rooms[code] = {
-            id: code,
-            gameType: gameType,
-            isPublic: isPublic,
-            players: [],
-            status: 'waiting',
-            bombs: [], // ボンバー用物理オブジェクト
-            startTime: null,
-            intervals: [] // クリーンアップ用
-        };
-        return rooms[code];
-    }
-
-    socket.on('quickMatch', (gameType) => {
-        if (!currentUser) return;
-
-        // パブリックで、待機中で、満員でない同じゲームタイプの部屋を探す
-        let room = Object.values(rooms).find(r => 
-            r.isPublic && 
-            r.gameType === gameType && 
-            r.status === 'waiting' && 
-            r.players.length < GLOBAL_CONFIG.MAX_PLAYERS_PER_ROOM
-        );
-
-        // なければ新規作成
-        const code = room ? room.id : Math.random().toString(36).substring(2, 7).toUpperCase();
-        if (!room) room = setupRoom(code, gameType, true);
-
-        joinRoom(code);
-    });
-
-    function joinRoom(code) {
-        const room = rooms[code];
-        if (!room || room.status !== 'waiting') return socket.emit('serverMessage', '入室できません');
-
-        // 以前の部屋から抜ける処理
-        if (currentRoomId && currentRoomId !== code) socket.leave(currentRoomId);
-
-        currentRoomId = code;
-        socket.join(code);
-
-        // プレイヤー情報の登録（戦闘用データ）
-        room.players.push({
-            socketId: socket.id,
-            uid: currentUser.id,
-            name: currentUser.name,
-            skin: currentUser.equippedSkin,
-            customSkinData: currentUser.customSkinData,
-            score: 0,
-            isDead: false
-        });
-
-        // 部屋の全員にメンバー更新を通知
-        io.to(code).emit('worldMembersUpdate', {
-            code: code,
-            members: room.players.map(p => p.name),
-            isPublic: room.isPublic
-        });
-    }
-
-    // ホスト（または誰か）がゲーム開始を押した時
-    socket.on('startMultiplayerGame', () => {
-        const room = rooms[currentRoomId];
-        if (room && room.status === 'waiting' && room.players.length >= 1) { // ※テスト用に1人でも開始可能にしています
-            executeGameStart(room);
+        const targetSocket = Array.from(io.sockets.sockets.values()).find(s => s.userId === targetId);
+        if (targetSocket) {
+            targetSocket.emit('mailDataUpdated', getEnrichedMailData(targetId, mailDB, usersDB));
+            targetSocket.emit('notification', `${senderNickname}さんからメールが届きました！`);
         }
     });
 
-    // --- ゲームロジック（サーバー主導） ---
-    function executeGameStart(room) {
-        room.status = 'playing';
-        room.startTime = Date.now();
+    socket.on('markMailAsRead', (mailId) => {
+        if (!socket.userId) return;
+        let mailDB = loadDB('mail');
+        let usersDB = loadDB('users');
+        let myMail = mailDB[socket.userId];
 
-        const playersData = room.players.map(p => ({
-            uid: p.uid, name: p.name, skin: p.skin, customSkinData: p.customSkinData
+        if (myMail) {
+            const mail = myMail.messages.find(m => m.id === mailId);
+            if (mail && !mail.isRead) {
+                mail.isRead = true;
+                saveDB('mail', mailDB);
+
+                // ★追加：既読にしたら即座に最新のメールボックスをクライアントに送り返す（これでUIの赤丸が消える）
+                socket.emit('mailDataUpdated', getEnrichedMailData(socket.userId, mailDB, usersDB));
+            }
+        }
+    });
+    // ================= 📜 バトル履歴機能 =================
+    socket.on('getHistoryData', () => {
+        if (!socket.userId) return;
+        const historyDB = loadDB('history');
+        const usersDB = loadDB('users');
+        const myHistory = historyDB[socket.userId] || { matches: [] };
+
+        // 対戦相手の名前を最新化して返す
+        const enrichedMatches = myHistory.matches.map(match => ({
+            ...match,
+            opponents: (match.opponents || []).map(opp => ({
+                id: opp.id,
+                name: usersDB[opp.id]?.nickname || "不明なプレイヤー"
+            }))
         }));
 
-        io.to(room.id).emit('gameStart', { gameType: room.gameType, playersData: playersData });
+        socket.emit('historyDataUpdated', enrichedMatches);
+    });
+    // ================= 🎁 報酬受取システム =================
+    socket.on('claimLoginBonus', () => {
+        if (!socket.userId) return;
+        let users = loadDB('users');
+        let user = users[socket.userId];
 
-        // ゲーム別のサーバー側物理演算ループ
-        if (room.gameType === 'bomber') {
-            // サーバー側で爆弾を生成し、移動を計算する
-            const bomb = { id: 'BOMB_' + Date.now(), x: 0, z: 0, vx: 0.3, vz: 0.3, speed: 0.4 };
-            room.bombs.push(bomb);
+        if (user && user.canClaimLoginBonus) {
+            user.canClaimLoginBonus = false; // フラグを折る
 
-            const timer = setInterval(() => {
-                // 爆弾の移動演算
-                bomb.x += bomb.vx * bomb.speed;
-                bomb.z += bomb.vz * bomb.speed;
+            // 連続ログイン数に応じて報酬を豪華にする
+            let bonusCoins = 10;
+            let bonusGacha = 0;
 
-                io.to(room.id).emit('bomberUpdateBomb', { 
-                    id: bomb.id, 
-                    pos: { x: bomb.x, y: 0.8, z: bomb.z } 
-                });
+            if (user.loginStreak >= 7) {
+                bonusCoins = 50;
+                bonusGacha = 1;
+            } else if (user.loginStreak >= 3) {
+                bonusCoins = 30;
+            }
 
-                // 場外に出たら爆発判定としてゲーム終了へ
-                if (Math.abs(bomb.x) > 16 || Math.abs(bomb.z) > 16) {
-                    io.to(room.id).emit('bomberExplode', { 
-                        id: bomb.id, 
-                        pos: { x: bomb.x, y: 0.8, z: bomb.z } 
-                    });
-                    finalizeGame(room.id);
-                }
-            }, 1000 / GLOBAL_CONFIG.FPS);
+            user.coins += bonusCoins;
+            if (bonusGacha > 0) user.gachaTickets += bonusGacha;
 
-            room.intervals.push(timer);
-        }
-    }
+            saveDB('users', users);
 
-    // プレイヤーの移動同期（超高頻度で呼ばれる）
-    socket.on('movePlayer', (data) => {
-        if (currentRoomId && currentUser) {
-            socket.to(currentRoomId).emit('otherPlayerMoved', {
-                uid: currentUser.id,
-                pos: data.pos || data, // 古い形式と新しい形式両方に対応
-                rot: data.rot
-            });
+            let msg = `ログインボーナスで ${bonusCoins} コイン`;
+            if (bonusGacha > 0) msg += ` と ガチャ券x${bonusGacha}`;
+            msg += ` を獲得しました！（連続ログイン: ${user.loginStreak}日目）`;
+
+            socket.emit('authSuccess', user); // UI側の数値を最新化
+            socket.emit('rewardClaimed', { success: true, message: msg });
+        } else {
+            socket.emit('rewardClaimed', { success: false, message: '今日の分は既に受け取り済みです。' });
         }
     });
 
-    // 本探しゲーム等のクリック判定（早い者勝ちをサーバーで判定）
-    socket.on('bookClicked', (bookId) => {
-        const room = rooms[currentRoomId];
-        if (room && room.status === 'playing' && !room.winnerDefined) {
-            room.winnerDefined = true;
+    socket.on('claimRoadmapReward', (targetTrophies) => {
+        if (!socket.userId) return;
+        let users = loadDB('users');
+        let user = users[socket.userId];
 
-            io.to(currentRoomId).emit('bookRoundResult', {
-                winnerUid: currentUser.id,
-                winnerName: currentUser.name,
-                targetId: bookId
-            });
+        if (!user) return;
+        if (!user.claimedRoadmapRewards) user.claimedRoadmapRewards = [];
 
-            // 2秒後にリザルト画面へ移行
-            setTimeout(() => finalizeGame(currentRoomId), 2000);
+        // 既に受け取っているか
+        if (user.claimedRoadmapRewards.includes(targetTrophies)) {
+            socket.emit('rewardClaimed', { success: false, message: '既に受け取り済みです。' });
+            return;
         }
+
+        // トロフィーが足りているか
+        if (user.trophies < targetTrophies) {
+            socket.emit('rewardClaimed', { success: false, message: 'トロフィーが足りません。' });
+            return;
+        }
+
+        // 資料に基づくロードマップ報酬内容
+        let coinsToAdd = 0;
+        let gachaToAdd = 0;
+        let levelUp = false;
+
+        switch(targetTrophies) {
+            case 10: coinsToAdd = 50; break;
+            case 30: gachaToAdd = 10; break;
+            case 50: coinsToAdd = 100; levelUp = true; break;
+            case 70: coinsToAdd = 50; gachaToAdd = 5; break;
+            case 100: coinsToAdd = 100; gachaToAdd = 5; levelUp = true; break;
+            default: 
+                socket.emit('rewardClaimed', { success: false, message: '無効な報酬です。' });
+                return;
+        }
+
+        user.coins += coinsToAdd;
+        user.gachaTickets += gachaToAdd;
+        if (levelUp) user.level += 1;
+
+        user.claimedRoadmapRewards.push(targetTrophies);
+        saveDB('users', users);
+
+        let msg = `🏆 トロフィー${targetTrophies}到達報酬を獲得！\n`;
+        if (coinsToAdd > 0) msg += `${coinsToAdd}コイン `;
+        if (gachaToAdd > 0) msg += `ガチャ券x${gachaToAdd} `;
+        if (levelUp) msg += `【レベルアップ！】`;
+
+        socket.emit('authSuccess', user); // UI最新化
+        socket.emit('rewardClaimed', { success: true, message: msg });
     });
+    // ================= 🎰 ガチャシステム =================
+    socket.on('drawGacha', () => {
+        if (!socket.userId) return;
+        let users = loadDB('users');
+        let user = users[socket.userId];
 
-    // 試合終了・報酬配布・部屋の解散
-    function finalizeGame(code) {
-        const room = rooms[code];
-        if (!room || room.status === 'finished') return;
+        if (!user) return;
 
-        room.status = 'finished';
-        room.intervals.forEach(clearInterval); // 全ての物理演算ループを停止
+        // チケット不足チェック
+        if (user.gachaTickets < 1) {
+            socket.emit('gachaResult', { success: false, message: 'ガチャ券が足りません。' });
+            return;
+        }
 
-        // 参加者全員に報酬を配布
-        room.players.forEach((p, index) => {
-            const socketTarget = io.sockets.sockets.get(p.socketId);
-            if (socketTarget) {
-                // 順位付け（簡易的にインデックスを使用、実際はスコアでソートする）
-                const rank = index + 1;
-                const rewardPoints = Math.max(10, 100 - (rank * 10)); // 1位90pt, 2位80pt...最低10pt
-                const rewardExp = 50;
+        // ガチャ券を1枚消費
+        user.gachaTickets -= 1;
 
-                // 戦績の記録
-                if (users[p.uid]) {
-                    users[p.uid].history.unshift({
-                        date: new Date().toISOString(),
-                        game: room.gameType,
-                        rank: rank,
-                        points: rewardPoints
-                    });
-                    // 戦績は直近10件のみ保存
-                    if (users[p.uid].history.length > 10) users[p.uid].history.pop();
-                }
+        // ★本格的な排出割合（妥協なし！）
+        // 50% - 30コイン
+        // 30% - 50コイン
+        // 10% - 100コイン
+        // 5%  - 200コイン
+        // 5%  - レアスキン (初期キャラの特別色)
 
-                socketTarget.emit('gameResult', {
-                    rank: rank,
-                    points: rewardPoints,
-                    exp: rewardExp,
-                    topPlayers: room.players.slice(0, 3).map(tp => tp.name)
-                });
+        const rand = Math.random() * 100;
+        let rewardType = '';
+        let rewardValue = null;
+        let message = '';
 
-                processGameRewards(p.uid, rewardExp, rewardPoints, socketTarget);
+        if (rand < 50) {
+            rewardType = 'coins'; rewardValue = 30; message = '30コイン獲得！';
+        } else if (rand < 80) {
+            rewardType = 'coins'; rewardValue = 50; message = '50コイン獲得！';
+        } else if (rand < 90) {
+            rewardType = 'coins'; rewardValue = 100; message = '大当たり！100コイン獲得！';
+        } else if (rand < 95) {
+            rewardType = 'coins'; rewardValue = 200; message = '超大当たり！200コイン獲得！';
+        } else {
+            rewardType = 'skin'; rewardValue = 'base_gold'; // 金色のスキン
+            message = '激レア！限定スキン「ゴールデン」を獲得！';
+        }
+
+        // 報酬をユーザーデータに追加
+        if (rewardType === 'coins') {
+            user.coins += rewardValue;
+        } else if (rewardType === 'skin') {
+            if (!user.skins["base_char"]) user.skins["base_char"] = [];
+
+            // 被り救済システム（既に持っていたらコインに変換）
+            if (user.skins["base_char"].includes(rewardValue)) {
+                user.coins += 150; 
+                message = '限定スキン「ゴールデン」を獲得しましたが、既に持っていたため 150コイン に変換されました！';
+            } else {
+                user.skins["base_char"].push(rewardValue);
             }
-        });
+        }
 
-        // 10秒後に部屋を完全に削除
-        setTimeout(() => delete rooms[code], 10000);
-    }
-
-            // --- ここから追加・上書き：確実な退出処理 ---
-            function handlePlayerLeave(socket) {
-                const roomId = socket.currentRoom;
-                if (roomId && rooms[roomId]) {
-                    rooms[roomId].members = rooms[roomId].members.filter(uid => uid !== socket.uid);
-                    socket.leave(roomId);
-                    socket.currentRoom = null;
-
-                    if (rooms[roomId].members.length > 0) {
-                        const updatedMemberNames = rooms[roomId].members.map(uid => users[uid].name);
-                        io.to(roomId).emit('worldMembersUpdate', {
-                            code: roomId,
-                            isPublic: rooms[roomId].isPublic,
-                            members: updatedMemberNames
-                        });
-                        if (rooms[roomId].gameActive) {
-                            io.to(roomId).emit('otherPlayerDied', socket.uid);
-                        }
-                    } else {
-                        delete rooms[roomId];
-                    }
-                }
-            }
-
-            socket.on('leaveRoom', () => {
-                handlePlayerLeave(socket);
-            });
-
+        // データを保存して最新化
+        saveDB('users', users);
+        socket.emit('authSuccess', user); 
+        socket.emit('gachaResult', { success: true, message: message, rewardType: rewardType, rewardValue: rewardValue });
+    });
     socket.on('disconnect', () => {
-        handlePlayerLeave(socket);
-        if (currentUser) saveDatabase();
+        console.log(`👋 プレイヤーが切断しました: ${socket.id}`);
     });
 });
 
-// 静的ファイルの提供設定（publicフォルダ内のファイルをクライアントに送信）
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-app.use(express.static(path.join(__dirname, 'public')));
-
-// サーバー起動
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, '0.0.0.0', () => {
-    console.log(`=========================================`);
-    console.log(`🚀 Ultimate Game Server is now Running!`);
-    console.log(`💾 Data Persistence: ENABLED`);
-    console.log(`📍 Port: ${PORT}`);
-    console.log(`=========================================`);
+server.listen(PORT, () => {
+    console.log(`\n================================`);
+    console.log(`🚀 ゲームサーバーが起動しました！`);
+    console.log(`👉 http://localhost:${PORT}`);
+    console.log(`================================\n`);
 });

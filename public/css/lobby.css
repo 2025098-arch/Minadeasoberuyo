@@ -1,0 +1,319 @@
+/* public/css/lobby.css */
+
+/* 🌟 明るいカラーパレットに変身 */
+:root {
+    --bg-color: #e1f5fe;       /* 空のような明るい水色 */
+    --panel-bg: #ffffff;       /* パネルは清潔感のある白 */
+    --text-color: #4f4f4f;     /* 文字は優しいダークグレー */
+    --accent-yellow: #ffca28;  /* 元気な黄色 */
+    --accent-blue: #03a9f4;    /* メインの爽やかな青 */
+    --accent-red: #ff5252;     /* アクセントの赤 */
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-weight: bold; /* 全体的に文字を太めにするとゲームっぽさUP */
+    margin: 0;
+    font-family: sans-serif;
+}
+
+/* ============================
+   ログイン画面
+============================ */
+#auth-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.auth-container {
+    background-color: var(--panel-bg);
+    padding: 30px;
+    border-radius: 20px;
+    width: 400px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(3, 169, 244, 0.15); /* 影も少し青っぽく */
+}
+.auth-tabs {
+    display: flex;
+    margin-bottom: 20px;
+}
+.auth-tabs button {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    color: #aaa;
+    border: none;
+    border-bottom: 3px solid #eee;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+.auth-tabs button.active {
+    color: var(--accent-blue);
+    border-bottom: 3px solid var(--accent-blue);
+}
+.input-form input {
+    width: 90%;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    border: 2px solid #e0e0e0;
+    background: #fafafa;
+    color: var(--text-color);
+    font-size: 1.1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.input-form input:focus {
+    border-color: var(--accent-blue);
+}
+.pin-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 90%;
+    margin: 0 auto;
+}
+.pin-wrapper input {
+    width: 65%;
+    margin-bottom: 0;
+}
+.pin-wrapper button {
+    padding: 15px;
+    background: #e0e0e0;
+    color: #333;
+    border-radius: 10px;
+    cursor: pointer;
+    border: none;
+    font-weight: bold;
+}
+#register-settings {
+    text-align: left;
+    background: #f5f5f5;
+    padding: 15px;
+    margin-top: 15px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* 立体的なメインボタン */
+.btn-primary {
+    width: 90%;
+    padding: 15px;
+    background-color: var(--accent-blue);
+    color: white;
+    font-size: 1.2rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 15px;
+    box-shadow: 0 4px 0 #0288d1; /* 下に影をつけて立体的に */
+}
+.btn-primary:active {
+    transform: translateY(4px); /* 押すと凹む */
+    box-shadow: none;
+}
+
+/* ============================
+   ホーム画面
+============================ */
+.home-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 30px;
+    background-color: white;
+    height: 60px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+.profile-section h2 { margin: 0; color: var(--accent-blue); }
+.status-section {
+    display: flex;
+    gap: 30px;
+    font-size: 1.2rem;
+}
+.status-item {
+    background: #f0f0f0;
+    padding: 5px 15px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.btn-secondary {
+    padding: 8px 15px;
+    background: #e0e0e0;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+/* メインレイアウト */
+.home-main-layout {
+    display: flex;
+    height: calc(100vh - 80px);
+    padding: 20px;
+    gap: 20px;
+    box-sizing: border-box;
+}
+.sidebar-left, .sidebar-right {
+    width: 250px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.sidebar-left button, .sidebar-right button {
+    padding: 20px;
+    background-color: white;
+    color: var(--text-color);
+    font-size: 1.1rem;
+    font-weight: bold;
+    text-align: left;
+    border: 2px solid #eee;
+    border-radius: 15px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #eee;
+}
+.sidebar-left button:hover, .sidebar-right button:hover {
+    border-color: var(--accent-blue);
+}
+.sidebar-left button:active, .sidebar-right button:active {
+    transform: translateY(4px);
+    box-shadow: none;
+}
+
+/* 中央エリア */
+.center-area {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
+    border-radius: 20px;
+}
+#character-canvas-container {
+    width: 100%;
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px; /* ここが重要：高さがないと3D空間が潰れる */
+}
+.placeholder-text { display: none; } /* 3Dが出るのでテキストは隠す */
+
+.game-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 20px;
+}
+.btn-large {
+    padding: 25px;
+    font-size: 1.8rem;
+    font-weight: bold;
+    background-color: var(--accent-yellow);
+    color: #333;
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 6px 0 #f5b041;
+    cursor: pointer;
+}
+.btn-large:active {
+    transform: translateY(6px);
+    box-shadow: none;
+}
+.sub-modes {
+    display: flex;
+    gap: 10px;
+}
+.sub-modes button { 
+    flex: 1; 
+    padding: 15px; 
+    background-color: var(--accent-red); 
+    color: white; 
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    box-shadow: 0 4px 0 #d32f2f;
+    cursor: pointer;
+}
+.sub-modes button:active {
+    transform: translateY(4px);
+    box-shadow: none;
+}
+
+/* ============================
+   追加：ポップアップウィンドウ（モーダル）
+============================ */
+#modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+#modal-overlay.hidden {
+    display: none !important;
+}
+
+.modal-window {
+    background-color: var(--panel-bg);
+    width: 80%;
+    max-width: 800px;
+    height: 70%;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.modal-header {
+    background-color: var(--accent-blue);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+#btn-close-modal {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.modal-body {
+    padding: 20px;
+    flex-grow: 1;
+    overflow-y: auto;
+    font-size: 1.1rem;
+}
