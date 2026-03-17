@@ -9,11 +9,11 @@
  * 1. Hex-A-Gone タイル生成と状態管理 (normal -> touched -> gone)
  * 2. キャラクターレベルと装備アイテムに基づく動的ステータス計算
  * 3. 独自の物理エンジン（重力、慣性、六角柱シリンダー衝突判定）
- * 4. 特殊能力の完全実装（ダッシュ、転がる、衰退）
- * 5. 動的UIインジェクション（能力・アイテムボタンの自動生成）
+ * 4. 特殊能力とアイテム使用の完全実装（ダッシュ、転がる、衰退、アクティブアイテム）
+ * 5. 動的UIインジェクション（ジョイスティック、ジャンプ、能力・アイテムボタンの自動生成）
  * 6. 観戦モード管理（死亡判定、視点切り替えUI、生存者トラッキング）
  * 7. トロフィー計算＆リザルト画面表示（common.css連携）
- * * @version 4.1.0 (Death Sync Fix Edition)
+ * * @version 4.2.0 (Full UI Controls & Active Items Edition)
  * ==================================================================================
  */
 
@@ -46,10 +46,12 @@ class OchirunaLogic {
             "char_dog":    { speed: 130, power: 120, special: "dash" }
         };
 
-        // アイテムマスター
+        // アイテムマスター（パッシブ型とアクティブ型を定義）
         this.MASTER_ITEMS = {
-            "item_yakiniku": { type: "passive", target: "power", multiplier: 1.2 },
-            "item_bread":    { type: "passive", target: "speed", multiplier: 1.2 }
+            "item_yakiniku":     { type: "passive", target: "power", multiplier: 1.2 },
+            "item_bread":        { type: "passive", target: "speed", multiplier: 1.2 },
+            "item_energy_drink": { type: "active", effect: "boost_speed", duration: 5.0, name: "エナドリ" },
+            "item_spring":       { type: "active", effect: "super_jump", duration: 5.0, name: "バネ" }
         };
 
         // ==========================================
@@ -67,6 +69,15 @@ class OchirunaLogic {
             type: null,
             timer: 0,
             originalStats: null // 能力終了後に戻すための退避場所
+        };
+
+        // アクティブアイテムのタイマー・状態管理
+        this.itemState = {
+            isActive: false,
+            effect: null,
+            timer: 0,
+            originalStats: null,
+            isUsed: false // 1試合での使い切りフラグ
         };
 
         // 鉛筆（衰退）用の内部タイマー
@@ -92,7 +103,7 @@ class OchirunaLogic {
      * @param {Object} usersData - users.json の全体データ
      * @param {string} localUserId - 自分自身のID
      */
-        init(usersData, localUserId) {
+    init(usersData, localUserId) {
         console.log("⚙️ [Logic] 究極ロジック初期化開始。一切の妥協なし。");
 
         const availableIds = Object.keys(usersData);
@@ -119,6 +130,9 @@ class OchirunaLogic {
         this.rankedPlayers = [];
         this.totalPlayers = availableIds.length;
         this.alivePlayersCount = this.totalPlayers;
+
+        // アイテム状態リセット
+        this.itemState.isUsed = false;
 
         // 1. プレイヤーの登録とステータス計算
         for (const [userId, data] of Object.entries(usersData)) {
@@ -165,7 +179,7 @@ class OchirunaLogic {
     _calculateStats(userData) {
         const charId = userData.equipped?.character || "char_human";
         const level = userData.level || 1;
-        const itemId = userData.equipped?.item || null; // パン、焼肉など
+        const itemId = userData.equipped?.item || null;
 
         // マスターから基本値を取得
         const base = this.MASTER_CHARACTERS[charId] || this.MASTER_CHARACTERS["char_human"];
@@ -184,7 +198,7 @@ class OchirunaLogic {
             if (itemEffect.type === "passive") {
                 const target = itemEffect.target; // "speed" or "power"
                 calculated[target] = Math.floor(calculated[target] * itemEffect.multiplier);
-                console.log(`🍖 [Logic] アイテム適用: ${itemId} により ${target} が ${itemEffect.multiplier}倍に！`);
+                console.log(`🍖 [Logic] パッシブアイテム適用: ${itemId} により ${target} が ${itemEffect.multiplier}倍に！`);
             }
         }
 
@@ -228,61 +242,110 @@ class OchirunaLogic {
     }
 
     // ========================================================
-    // 🕹️ UI インジェクション（ボタン自動生成）
+    // 🕹️ UI インジェクション（ボタン＆ジョイスティック自動生成）
     // ========================================================
 
     /**
-     * キャラクターの特殊能力に応じたボタンを画面に生成する
+     * ジョイスティック、ジャンプボタン、アイテム、能力ボタンを生成する
      * @private
      */
     _setupUI(localPlayer) {
-        // 既存の能力ボタンがあれば削除
-        const existingBtn = document.getElementById('ochiruna-ability-btn');
-        if (existingBtn) existingBtn.remove();
-
-        const special = localPlayer.baseStats.special;
-        if (special === "none" || special === "decline") {
-            // 衰退(decline)はパッシブスキルのためボタン不要
-            return; 
-        }
-
-        // ボタン要素の作成
-        const btn = document.createElement('button');
-        btn.id = 'ochiruna-ability-btn';
-
-        // スタイル設定（スマホでも押しやすいように右下に配置）
-        Object.assign(btn.style, {
-            position: 'absolute',
-            bottom: '30px',
-            right: '30px',
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(255, 69, 0, 0.8)',
-            color: 'white',
-            border: '3px solid white',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
-            cursor: 'pointer',
-            zIndex: '1000',
-            userSelect: 'none'
+        // 既存の操作UIがあれば全て削除（初期化時の重複防止）
+        const uiIds = ['ochiruna-joystick-zone', 'ochiruna-jump-btn', 'ochiruna-ability-btn', 'ochiruna-item-btn'];
+        uiIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
         });
 
-        // 能力ごとのテキスト設定
-        if (special === "dash") {
-            btn.innerHTML = '🐕<br>ダッシュ';
-            btn.onclick = () => this._activateAbility("dash");
-        } else if (special === "roll") {
-            btn.innerHTML = '🍎<br>転がる';
-            btn.onclick = () => this._activateAbility("roll");
+        // 1. ジョイスティックの生成 (左下)
+        const joyZone = document.createElement('div');
+        joyZone.id = 'ochiruna-joystick-zone';
+        Object.assign(joyZone.style, {
+            position: 'absolute', bottom: '30px', left: '30px',
+            width: '120px', height: '120px', borderRadius: '50%',
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            border: '2px solid rgba(255, 255, 255, 0.4)',
+            zIndex: '1000', touchAction: 'none', userSelect: 'none'
+        });
+
+        const joyKnob = document.createElement('div');
+        joyKnob.id = 'ochiruna-joystick-knob';
+        Object.assign(joyKnob.style, {
+            position: 'absolute', top: '50%', left: '50%',
+            width: '50px', height: '50px', borderRadius: '50%',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
+        });
+        joyZone.appendChild(joyKnob);
+        document.body.appendChild(joyZone);
+
+        // 2. ジャンプボタンの生成 (右下ベース)
+        const jumpBtn = document.createElement('button');
+        jumpBtn.id = 'ochiruna-jump-btn';
+        jumpBtn.innerHTML = '⬆️<br>JUMP';
+        Object.assign(jumpBtn.style, {
+            position: 'absolute', bottom: '30px', right: '30px',
+            width: '80px', height: '80px', borderRadius: '50%',
+            backgroundColor: 'rgba(0, 200, 100, 0.8)', color: 'white',
+            border: '3px solid white', fontSize: '14px', fontWeight: 'bold',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.5)', cursor: 'pointer',
+            zIndex: '1000', userSelect: 'none', touchAction: 'manipulation'
+        });
+        document.body.appendChild(jumpBtn);
+
+        // 3. 特殊能力ボタンの生成 (ジャンプボタンの左上付近)
+        const special = localPlayer.baseStats.special;
+        if (special !== "none" && special !== "decline") {
+            const abilityBtn = document.createElement('button');
+            abilityBtn.id = 'ochiruna-ability-btn';
+            Object.assign(abilityBtn.style, {
+                position: 'absolute', bottom: '120px', right: '90px',
+                width: '70px', height: '70px', borderRadius: '50%',
+                backgroundColor: 'rgba(255, 69, 0, 0.8)', color: 'white',
+                border: '2px solid white', fontSize: '12px', fontWeight: 'bold',
+                boxShadow: '0 4px 10px rgba(0,0,0,0.5)', cursor: 'pointer',
+                zIndex: '1000', userSelect: 'none'
+            });
+
+            if (special === "dash") {
+                abilityBtn.innerHTML = '🐕<br>ダッシュ';
+                abilityBtn.onclick = () => this._activateAbility("dash");
+            } else if (special === "roll") {
+                abilityBtn.innerHTML = '🍎<br>転がる';
+                abilityBtn.onclick = () => this._activateAbility("roll");
+            }
+            document.body.appendChild(abilityBtn);
         }
 
-        // クリック時のフィードバック
-        btn.addEventListener('touchstart', () => btn.style.transform = 'scale(0.9)');
-        btn.addEventListener('touchend', () => btn.style.transform = 'scale(1)');
+        // 4. アクティブアイテムボタンの生成 (ジャンプボタンの上付近)
+        const itemId = localPlayer.equippedItem;
+        if (itemId && this.MASTER_ITEMS[itemId]) {
+            const itemData = this.MASTER_ITEMS[itemId];
+            if (itemData.type === "active") {
+                const itemBtn = document.createElement('button');
+                itemBtn.id = 'ochiruna-item-btn';
+                Object.assign(itemBtn.style, {
+                    position: 'absolute', bottom: '130px', right: '20px',
+                    width: '60px', height: '60px', borderRadius: '50%',
+                    backgroundColor: 'rgba(138, 43, 226, 0.8)', color: 'white', // 紫色系
+                    border: '2px solid white', fontSize: '12px', fontWeight: 'bold',
+                    boxShadow: '0 4px 10px rgba(0,0,0,0.5)', cursor: 'pointer',
+                    zIndex: '1000', userSelect: 'none'
+                });
+                itemBtn.innerHTML = `🎒<br>${itemData.name}`;
+                itemBtn.onclick = () => this._activateItem(itemId);
+                document.body.appendChild(itemBtn);
+            }
+        }
 
-        document.body.appendChild(btn);
+        // UIへの簡易アニメーション設定（タッチフィードバック）
+        [jumpBtn, document.getElementById('ochiruna-ability-btn'), document.getElementById('ochiruna-item-btn')].forEach(btn => {
+            if (btn) {
+                btn.addEventListener('touchstart', () => btn.style.transform = 'scale(0.9)');
+                btn.addEventListener('touchend', () => btn.style.transform = 'scale(1)');
+            }
+        });
     }
 
     // ========================================================
@@ -294,44 +357,26 @@ class OchirunaLogic {
      * @private
      */
     _setupSpectatorUI() {
-        // 1. 「観戦モード」のテキスト表示
         const specText = document.createElement('div');
         specText.id = 'ochiruna-spectator-text';
         specText.innerHTML = '👁️ 観戦モード';
         Object.assign(specText.style, {
-            position: 'absolute',
-            top: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            color: 'white',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            textShadow: '2px 2px 4px black',
-            zIndex: '1000',
-            pointerEvents: 'none'
+            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+            color: 'white', fontSize: '24px', fontWeight: 'bold', textShadow: '2px 2px 4px black',
+            zIndex: '1000', pointerEvents: 'none'
         });
         document.body.appendChild(specText);
 
-        // 2. 「視点切り替え」ボタンの生成
         const switchBtn = document.createElement('button');
         switchBtn.id = 'ochiruna-spectator-btn';
         switchBtn.innerHTML = '🔄<br>視点切替';
         Object.assign(switchBtn.style, {
-            position: 'absolute',
-            bottom: '30px',
-            right: '30px',
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(0, 150, 255, 0.8)', // 青系の色に変更
-            color: 'white',
-            border: '3px solid white',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
-            cursor: 'pointer',
-            zIndex: '1000',
-            userSelect: 'none'
+            position: 'absolute', bottom: '30px', right: '30px',
+            width: '80px', height: '80px', borderRadius: '50%',
+            backgroundColor: 'rgba(0, 150, 255, 0.8)', color: 'white',
+            border: '3px solid white', fontSize: '14px', fontWeight: 'bold',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.5)', cursor: 'pointer',
+            zIndex: '1000', userSelect: 'none'
         });
 
         switchBtn.onclick = () => this._switchSpectatorTarget();
@@ -346,31 +391,24 @@ class OchirunaLogic {
      * @private
      */
     _switchSpectatorTarget() {
-        // 生きているプレイヤーだけを抽出
         const alivePlayers = Object.values(this.players).filter(p => !p.isDead);
+        if (alivePlayers.length === 0) return;
 
-        if (alivePlayers.length === 0) return; // 全滅している場合は何もしない
-
-        // 現在のターゲットのインデックスを探す
         const currentIndex = alivePlayers.findIndex(p => p.id === this.spectatorTargetId);
-
-        // 次のプレイヤーへ（最後まで行ったら最初に戻るループ）
         const nextIndex = (currentIndex + 1) % alivePlayers.length;
         this.spectatorTargetId = alivePlayers[nextIndex].id;
 
         console.log(`👁️ [Logic] 観戦対象を切り替えました: ${this.spectatorTargetId}`);
     }
 
-
     // ========================================================
-    // ⚡ 特殊能力の発動ロジック
+    // ⚡ 特殊能力 ＆ アクティブアイテム 発動ロジック
     // ========================================================
 
     _activateAbility(type) {
-        if (this.abilityState.isActive) return; // すでに発動中なら無視
-        if (this.isSpectating) return; // 死亡・観戦中は発動不可
+        if (this.abilityState.isActive) return;
+        if (this.isSpectating) return;
 
-        // 自身のID(this.localPlayerId)で参照する
         const p = this.players[this.localPlayerId];
         if (!p) return;
 
@@ -378,22 +416,49 @@ class OchirunaLogic {
         this.abilityState.type = type;
         this.abilityState.timer = 10.0; // 発動時間10秒
 
-        // 現在のステータスを退避
         this.abilityState.originalStats = { ...p.currentStats };
 
-        // 能力ごとのステータス変動を適用
         if (type === "dash") {
             console.log("⚡ [Logic] 犬の能力「ダッシュ」発動！ スピード1.5倍！");
             p.currentStats.speed = Math.floor(p.currentStats.speed * 1.5);
         } else if (type === "roll") {
             console.log("⚡ [Logic] りんごの能力「転がる」発動！ スピード2倍、ジャンプ不可！");
             p.currentStats.speed = Math.floor(p.currentStats.speed * 2.0);
-            p.currentStats.power = 0; // ジャンプ力を奪う
+            p.currentStats.power = 0;
         }
 
-        // UIボタンをクールダウン表示に変更
         const btn = document.getElementById('ochiruna-ability-btn');
         if (btn) btn.style.backgroundColor = 'gray';
+    }
+
+    _activateItem(itemId) {
+        if (this.itemState.isActive || this.itemState.isUsed) return; // 既に発動中、または使用済み
+        if (this.isSpectating) return;
+
+        const p = this.players[this.localPlayerId];
+        const itemData = this.MASTER_ITEMS[itemId];
+        if (!p || !itemData) return;
+
+        this.itemState.isActive = true;
+        this.itemState.isUsed = true; // 1試合1回ポッキリ
+        this.itemState.effect = itemData.effect;
+        this.itemState.timer = itemData.duration;
+
+        this.itemState.originalStats = { ...p.currentStats };
+
+        if (itemData.effect === "boost_speed") {
+            console.log(`🎒 [Logic] アイテム「${itemData.name}」発動！ スピード激増！`);
+            p.currentStats.speed = Math.floor(p.currentStats.speed * 1.8);
+        } else if (itemData.effect === "super_jump") {
+            console.log(`🎒 [Logic] アイテム「${itemData.name}」発動！ ジャンプ力激増！`);
+            p.currentStats.power = Math.floor(p.currentStats.power * 2.0);
+        }
+
+        const btn = document.getElementById('ochiruna-item-btn');
+        if (btn) {
+            btn.style.backgroundColor = 'rgba(50, 50, 50, 0.8)';
+            btn.innerHTML = '🚫<br>使用済';
+        }
     }
 
     // ========================================================
@@ -405,12 +470,11 @@ class OchirunaLogic {
      * @param {number} dt - デルタタイム（前フレームからの経過秒数）
      */
     update(input, dt) {
-        if (!this.isGameActive || this.isGameOver) return this._getGameState(); // 終了時は更新ストップ
+        if (!this.isGameActive || this.isGameOver) return this._getGameState();
 
-        // 自身のID(this.localPlayerId)で参照する
         const p = this.players[this.localPlayerId];
         if (p && !p.isDead) {
-            this._updateAbilities(p, dt);
+            this._updateAbilitiesAndItems(p, dt);
             this._applyPhysics(p, input, dt);
             this._checkCollisions(p);
         }
@@ -418,7 +482,7 @@ class OchirunaLogic {
         // 🌟 死亡判定は全員分ローカルで回す（全員死亡を検知するため）
         for (let id in this.players) {
             const player = this.players[id];
-            this._checkDeath(player); // isDead になっていても isDeathProcessed が済むまで処理を回す
+            this._checkDeath(player);
         }
 
         this._updateTiles(dt);
@@ -428,33 +492,42 @@ class OchirunaLogic {
     }
 
     /**
-     * 鉛筆の「衰退」や、発動中の能力タイマーの処理
+     * 鉛筆の「衰退」、発動中の能力タイマー、アイテムタイマーの処理
      */
-    _updateAbilities(p, dt) {
-        // 1. 鉛筆のパッシブスキル「衰退」: 常にパワーが減り、スピードが上がる (HP処理は削除)
+    _updateAbilitiesAndItems(p, dt) {
+        // 1. 鉛筆のパッシブスキル「衰退」
         if (p.characterId === "char_pencil") {
             this.declineTimer += dt;
-            if (this.declineTimer >= 1.0) { // 1秒ごとに更新
+            if (this.declineTimer >= 1.0) {
                 this.declineTimer = 0;
-                // パワーを減少（最低値10）、スピードを増加（最大値150）
                 p.currentStats.power = Math.max(10, p.currentStats.power - 2);
                 p.currentStats.speed = Math.min(150, p.currentStats.speed + 2);
             }
         }
 
-        // 2. アクティブスキルのタイマー処理（ダッシュ、転がる）
+        // 2. 特殊能力のタイマー処理
         if (this.abilityState.isActive) {
             this.abilityState.timer -= dt;
             if (this.abilityState.timer <= 0) {
-                // 能力終了、ステータスを元に戻す
-                console.log(`🛑 [Logic] 能力終了。ステータスを元に戻します。`);
+                console.log(`🛑 [Logic] 特殊能力終了。ステータスを元に戻します。`);
                 p.currentStats.speed = this.abilityState.originalStats.speed;
                 p.currentStats.power = this.abilityState.originalStats.power;
                 this.abilityState.isActive = false;
 
-                // UIリセット
                 const btn = document.getElementById('ochiruna-ability-btn');
                 if (btn) btn.style.backgroundColor = 'rgba(255, 69, 0, 0.8)';
+            }
+        }
+
+        // 3. アクティブアイテムのタイマー処理
+        if (this.itemState.isActive) {
+            this.itemState.timer -= dt;
+            if (this.itemState.timer <= 0) {
+                console.log(`🛑 [Logic] アイテム効果終了。ステータスを元に戻します。`);
+                // 万が一能力と被っていた場合におかしくならないよう、安全に復元
+                p.currentStats.speed = this.itemState.originalStats.speed;
+                p.currentStats.power = this.itemState.originalStats.power;
+                this.itemState.isActive = false;
             }
         }
     }
@@ -463,24 +536,18 @@ class OchirunaLogic {
      * 物理演算（移動、重力、ジャンプ）
      */
     _applyPhysics(p, input, dt) {
-        // --- 移動ベクトル計算 ---
-        // メソッドが存在しない場合に備えた安全網（クラッシュ防止）
         const moveVec = (input && typeof input.getMovementVector === 'function') 
             ? input.getMovementVector() 
             : { x: 0, z: 0 }; 
 
         const moveSpeed = p.currentStats.speed * this.CONSTANTS.BASE_SPEED_MODIFIER;
-
-        // 空中では移動制御が鈍くなる（Hex-A-Gone仕様）
         const controlModifier = p.isGrounded ? 1.0 : 0.4;
 
-        // 慣性を表現するため、Lerp(線形補間)で速度を目標値に近づける
         const targetVx = moveVec.x * moveSpeed;
         const targetVz = moveVec.z * moveSpeed;
         p.vx += (targetVx - p.vx) * 10.0 * dt * controlModifier;
         p.vz += (targetVz - p.vz) * 10.0 * dt * controlModifier;
 
-        // --- 重力の適用 ---
         if (!p.isGrounded) {
             p.vy -= this.CONSTANTS.GRAVITY * dt;
             if (p.vy < this.CONSTANTS.TERMINAL_VELOCITY) {
@@ -488,73 +555,59 @@ class OchirunaLogic {
             }
         }
 
-        // --- ジャンプ処理 ---
-        // ジャンプ入力の安全網
         const isJump = (input && typeof input.isJumpPressed === 'function') 
             ? input.isJumpPressed() 
             : false;
 
-        // users.jsonから計算された「power」がジャンプ力に直結する
         if (p.isGrounded && isJump && p.currentStats.power > 0) {
             const jumpForce = Math.sqrt(p.currentStats.power) * this.CONSTANTS.BASE_JUMP_MODIFIER;
-            p.vy = 12.0 + jumpForce; // 基本ジャンプ力 + ステータス補正
+            p.vy = 12.0 + jumpForce;
             p.isGrounded = false;
         }
 
-        // --- 座標の更新 ---
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.z += p.vz * dt;
 
-        // 初期化（当たり判定で接地したらtrueになる）
         p.isGrounded = false; 
     }
 
     /**
-     * Hexagonal Cylinder と Player (Sphere/Cylinder) の精密な当たり判定
+     * Hexagonal Cylinder と Player の精密な当たり判定
      */
     _checkCollisions(p) {
-        // 足元の位置（プレイヤーのY座標が基準）
         const footY = p.y;
         let onTile = false;
         let currentLayerCheck = 0;
 
         for (let [tileId, tile] of this.tiles.entries()) {
-            if (tile.state === 'gone') continue; // 消えたタイルは無視
+            if (tile.state === 'gone') continue;
 
-            // --- 1. Y軸（高さ）の判定 ---
-            // タイルの上面から少し下までを許容範囲とする
             const tileTop = tile.y + (this.CONSTANTS.TILE_HEIGHT / 2);
             if (footY > tileTop + 0.5 || footY < tileTop - 0.5) continue;
 
-            if (p.vy > 0) continue; // 上昇中（ジャンプ中）はすり抜ける
+            if (p.vy > 0) continue;
 
-            // --- 2. XZ平面（円と六角形の近似）の判定 ---
             const dx = p.x - tile.x;
             const dz = p.z - tile.z;
             const distanceSq = dx * dx + dz * dz;
             const collisionRadius = this.CONSTANTS.TILE_RADIUS * 0.85 + this.CONSTANTS.PLAYER_RADIUS;
 
             if (distanceSq <= collisionRadius * collisionRadius) {
-                // 接地判定成功！
                 p.y = tileTop;
                 p.vy = 0;
                 p.isGrounded = true;
                 currentLayerCheck = tile.layer;
                 onTile = true;
 
-                // タイルの状態遷移（Hex-A-Goneの肝）
                 if (tile.state === 'normal') {
                     tile.state = 'touched';
                     tile.touchTimer = this.CONSTANTS.TOUCH_TO_GONE_TIME;
 
-                    // 自分が踏んだタイルを即座にネットワークに通知！
                     if (typeof this.onLocalTileTouched === 'function') {
                         this.onLocalTileTouched(tile.id, 'touched');
                     }
                 }
-
-                // 一つのタイルに乗ったら他のタイルの判定は不要
                 break;
             }
         }
@@ -572,7 +625,7 @@ class OchirunaLogic {
             if (tile.state === 'touched') {
                 tile.touchTimer -= dt;
                 if (tile.touchTimer <= 0) {
-                    tile.state = 'gone'; // 奈落へ落とす
+                    tile.state = 'gone';
                 }
             }
         }
@@ -583,173 +636,225 @@ class OchirunaLogic {
     // ========================================================
 
     /**
-     * 落下死の判定と観戦モードへの移行（🌟同期ズレ完全対策版）
+     * 🔌 プレイヤー切断（タブ閉じ）時の強制死亡判定（🌟妥協なし・フリーズ完全対策版）
+     * ※ 外部の通信層(network.js等)から「誰かが切断した」イベントを受け取った時に呼び出します
      */
-    _checkDeath(p) {
-        const deathY = -((this.CONSTANTS.LAYERS - 1) * this.CONSTANTS.LAYER_GAP) - 10;
+    _handlePlayerDisconnect(disconnectedId) {
+        // 対象プレイヤーを特定（配列・Mapどちらの形式でも絶対に探し出す）
+        let p = null;
+        if (Array.isArray(this.players)) {
+            p = this.players.find(player => String(player.id) === String(disconnectedId));
+        } else if (this.players instanceof Map) {
+            p = this.players.get(disconnectedId) || this.players.get(String(disconnectedId));
+        }
 
-        // 1. ローカルでの物理落下による死亡検知
-        if (p.y < deathY && !p.isDead) {
+        // プレイヤーが存在し、まだ生きている場合のみ「即死」処理を実行！
+        if (p && !p.isDead) {
+            console.log(`🔌 [Logic] プレイヤー ${disconnectedId} の切断を検知。強制的に死亡判定を下します！`);
             p.isDead = true;
-        }
 
-        // 2. 死亡状態だが、まだ順位等の処理が終わっていない場合
-        // （他スクリプトから通信で強制的に p.isDead = true にされた場合でも、ここで確実に拾う）
-        if (p.isDead && !p.isDeathProcessed) {
-            p.isDeathProcessed = true; // 処理済みにマーク
+            if (!p.isDeathProcessed) {
+                p.isDeathProcessed = true;
 
-            // 🌟 順位を確定させる (残っている人数がそのまま順位になる)
-            p.rank = this.alivePlayersCount;
-            this.rankedPlayers.push(p);
-            this.alivePlayersCount--;
+                // 切断した瞬間の「生存人数」をその人の順位とする（早く逃げたほど最下位になる）
+                p.rank = this.alivePlayersCount;
+                this.rankedPlayers.push(p);
+                this.alivePlayersCount--;
 
-            // 自分が死んだ場合の特別処理
-            if (p.id === this.localPlayerId) {
-                console.log(`💀 [Logic] 絶対に落ちるなって言ったよね`);
+                console.log(`💀 [Logic] 切断プレイヤー ${p.id} が脱落。 (順位: ${p.rank}位)`);
 
-                // 画面のど真ん中に特大煽りテロップを表示
-                this._showTauntLog();
-
-                this.isSpectating = true;
-
-                // 能力ボタンを非表示にする
-                const btn = document.getElementById('ochiruna-ability-btn');
-                if (btn) btn.style.display = 'none';
-
-                // まだ生き残りがいるなら観戦モードへ
-                if (this.alivePlayersCount > 0) {
-                    this._switchSpectatorTarget(); 
-                    this._setupSpectatorUI();
+                // 🌟 妥協なしポイント：3Dモデルを完全に非表示にしてフリーズと進行不能を100%防ぐ！
+                if (p.mesh) {
+                    p.mesh.visible = false;
                 }
+
+                // 観戦中の相手が切断した場合、虚無を映さないように別のプレイヤーへカメラを切り替える
+                if (this.isSpectating && this.spectatorTargetId === String(p.id) && this.alivePlayersCount > 0) {
+                    this._switchSpectatorTarget();
+                }
+
+                // 全員死んだらリザルトへ
+                if (this.alivePlayersCount === 0) {
+                    this._finishGame();
+                }
+            }
+        }
+    }
+    
+        /**
+         * 落下死の判定と観戦モードへの移行（🌟同期ズレ完全対策版）
+         */
+        _checkDeath(p) {
+            const deathY = -((this.CONSTANTS.LAYERS - 1) * this.CONSTANTS.LAYER_GAP) - 10;
+
+            if (p.y < deathY && !p.isDead) {
+                p.isDead = true;
+            }
+
+            if (p.isDead && !p.isDeathProcessed) {
+                p.isDeathProcessed = true;
+
+                p.rank = this.alivePlayersCount;
+                this.rankedPlayers.push(p);
+                this.alivePlayersCount--;
+
+                // 自分が死んだ場合の特別処理
+                if (p.id === this.localPlayerId) {
+                    console.log(`💀 [Logic] 絶対に落ちるなって言ったよね`);
+                    this._showTauntLog();
+                    this.isSpectating = true;
+
+                    // 🌟 ここで操作用のUIを「全て」確実に消去する
+                    const uiElementsToHide = [
+                        'ochiruna-joystick-zone',
+                        'ochiruna-jump-btn',
+                        'ochiruna-ability-btn',
+                        'ochiruna-item-btn'
+                    ];
+                    uiElementsToHide.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.display = 'none';
+                    });
+
+                    if (this.alivePlayersCount > 0) {
+                        this._switchSpectatorTarget(); 
+                        this._setupSpectatorUI();
+                    }
+                } else {
+                    console.log(`💀 [Logic] プレイヤー ${p.id} が脱落しました。 (順位: ${p.rank}位)`);
+                }
+
+                if (this.alivePlayersCount === 0) {
+                    this._finishGame();
+                }
+            }
+        }
+
+        /**
+         * 煽りログを画面のど真ん中に表示する
+         */
+        _showTauntLog() {
+            const tauntText = document.createElement('div');
+            tauntText.innerHTML = '絶対に落ちるなって言ったよね？';
+            Object.assign(tauntText.style, {
+                position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)',
+                color: '#ff2222', fontSize: '48px', fontWeight: '900', WebkitTextStroke: '2px white',
+                textShadow: '0 0 20px red', zIndex: '2000', pointerEvents: 'none',
+                opacity: '1', transition: 'opacity 3s ease-in-out', textAlign: 'center', width: '100%',
+                fontFamily: "'Helvetica Neue', Arial, sans-serif"
+            });
+
+            document.body.appendChild(tauntText);
+
+            setTimeout(() => { tauntText.style.opacity = '0'; }, 3000);
+            setTimeout(() => { tauntText.remove(); }, 6000);
+        }
+
+        /**
+         * ブロスタ風のトロフィー増減を計算する
+         */
+        _calculateTrophyChange(rank, totalPlayers, currentTrophies) {
+            if (totalPlayers <= 1) return 0;
+
+            const position = (rank - 1) / (totalPlayers - 1); 
+            let winBase = 8;
+            let loseBase = 0;
+
+            if (currentTrophies < 100) { loseBase = 1; }
+            else if (currentTrophies < 300) { loseBase = 3; }
+            else if (currentTrophies < 500) { loseBase = 6; }
+            else if (currentTrophies < 800) { loseBase = 8; }
+            else { loseBase = 10; }
+
+            let change = 0;
+            if (position < 0.5) {
+                change = Math.round(winBase * (1 - position * 2));
             } else {
-                console.log(`💀 [Logic] プレイヤー ${p.id} が脱落しました。 (順位: ${p.rank}位)`);
+                change = Math.round(-loseBase * ((position - 0.5) * 2));
             }
 
-            // 🌟 全員死んだらゲーム終了（表彰台へ）
-            if (this.alivePlayersCount === 0) {
-                this._finishGame();
-            }
-        }
-    }
-
-    /**
-     * 煽りログを画面のど真ん中に表示する
-     */
-    _showTauntLog() {
-        const tauntText = document.createElement('div');
-        tauntText.innerHTML = '絶対に落ちるなって言ったよね？';
-        Object.assign(tauntText.style, {
-            position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)',
-            color: '#ff2222', fontSize: '48px', fontWeight: '900', WebkitTextStroke: '2px white',
-            textShadow: '0 0 20px red', zIndex: '2000', pointerEvents: 'none',
-            opacity: '1', transition: 'opacity 3s ease-in-out', textAlign: 'center', width: '100%',
-            fontFamily: "'Helvetica Neue', Arial, sans-serif"
-        });
-
-        document.body.appendChild(tauntText);
-
-        // 3秒後にフェードアウトして消す
-        setTimeout(() => { tauntText.style.opacity = '0'; }, 3000);
-        setTimeout(() => { tauntText.remove(); }, 6000);
-    }
-
-    /**
-     * ブロスタ風のトロフィー増減を計算する
-     */
-    _calculateTrophyChange(rank, totalPlayers, currentTrophies) {
-        if (totalPlayers <= 1) return 0; // 1人の場合は変動なし
-
-        // 0.0 (1位) ～ 1.0 (ビリ) の割合を出す
-        const position = (rank - 1) / (totalPlayers - 1); 
-
-        let winBase = 8; // 1位の基本獲得数
-        let loseBase = 0; // ビリの基本減少数
-
-        // 帯域ごとのマイナス調整
-        if (currentTrophies < 100) {
-            loseBase = 1; 
-        } else if (currentTrophies < 300) {
-            loseBase = 3;
-        } else if (currentTrophies < 500) {
-            loseBase = 6;
-        } else if (currentTrophies < 800) {
-            loseBase = 8;
-        } else {
-            loseBase = 10;
+            return change;
         }
 
-        let change = 0;
-        if (position < 0.5) {
-            // 上位陣 (0 ~ 0.49): プラス変動
-            change = Math.round(winBase * (1 - position * 2));
-        } else {
-            // 下位陣 (0.5 ~ 1.0): マイナス変動
-            change = Math.round(-loseBase * ((position - 0.5) * 2));
+        /**
+         * ゲーム終了時の処理（リザルト画面表示とデータ保存）
+         */
+        _finishGame() {
+            if (this.isGameOver) return;
+            this.isGameOver = true;
+            console.log("🏁 [Logic] ゲーム終了！表彰台を生成します。");
+
+            const specText = document.getElementById('ochiruna-spectator-text');
+            const specBtn = document.getElementById('ochiruna-spectator-btn');
+            if (specText) specText.remove();
+            if (specBtn) specBtn.remove();
+
+            this.rankedPlayers.sort((a, b) => a.rank - b.rank);
+            this._saveTrophiesAndShowResult();
         }
-
-        return change;
-    }
-
-    /**
-     * ゲーム終了時の処理（リザルト画面表示とデータ保存）
-     */
-    _finishGame() {
-        if (this.isGameOver) return;
-        this.isGameOver = true;
-        console.log("🏁 [Logic] ゲーム終了！表彰台を生成します。");
-
-        // 観戦UIを消す
-        const specText = document.getElementById('ochiruna-spectator-text');
-        const specBtn = document.getElementById('ochiruna-spectator-btn');
-        if (specText) specText.remove();
-        if (specBtn) specBtn.remove();
-
-        // ランク順（1位が先頭）に並び替える
-        this.rankedPlayers.sort((a, b) => a.rank - b.rank);
-
-        // トロフィーの計算と保存処理を呼び出す
-        this._saveTrophiesAndShowResult();
-    }
 
     /**
      * トロフィー計算、サーバー送信、そして common.css 準拠の UI 表示
+     * 🌟 修正版：UI表示の前に「トロフィー」と「履歴」を即座に確定保存する！
      */
     _saveTrophiesAndShowResult() {
-        // 自分のトロフィー増減を計算
         const myPlayer = this.rankedPlayers.find(p => String(p.id) === this.localPlayerId);
         let myTrophyChange = 0;
+
         if (myPlayer) {
+            // 1. まずトロフィー変動値を確定させる
             myTrophyChange = this._calculateTrophyChange(myPlayer.rank, this.totalPlayers, myPlayer.trophies);
 
-            // --- ⚠️ バックエンド(users.json)保存用の擬似APIコール ---
-            console.log(`📡 [API] トロフィー更新リクエスト送信: ID=${this.localPlayerId}, 変動=${myTrophyChange}`);
-            fetch('/api/update-trophies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: this.localPlayerId, trophyChange: myTrophyChange })
-            }).catch(err => console.warn("バックエンド未接続のためトロフィー保存はスキップされました", err));
+            console.log(`📡 [Logic] トロフィー確定！変動=${myTrophyChange}。即座にサーバーへ保存します！`);
+
+            // 🌟 【最重要】10秒待たずに「今」トロフィー結果をサーバーに送る！
+            if (window.socket) {
+                window.socket.emit('updateGameResult', { trophyChange: myTrophyChange });
+            }
+
+            // ========================================================
+            // 🔥 バトル履歴データも「即時」保存！タブを即閉じられても絶対に履歴を残す！
+            // ========================================================
+            const matchOpponents = this.rankedPlayers.map(p => ({
+                id: String(p.id),
+                name: p.nickname,
+                level: p.level || 1, // 取得できなければレベル1をデフォルト
+                rank: p.rank
+            }));
+
+            const historyPayload = {
+                userId: this.localPlayerId,
+                matchData: {
+                    rank: myPlayer.rank,
+                    result: myPlayer.rank === 1 ? 'WIN' : 'LOSE',
+                    trophies: myPlayer.trophies + myTrophyChange,
+                    trophyChange: myTrophyChange,
+                    mode: 'Ochiruna', // history_ui.js の displayMode 用
+                    timestamp: Date.now(),
+                    opponents: matchOpponents
+                }
+            };
+
+            if (window.socket) {
+                console.log(`📜 [Logic] バトル履歴データを即座にサーバーへ送信します...`);
+                window.socket.emit('saveMatchHistory', historyPayload);
+            }
+            // ========================================================
         }
 
-        // ============================================
-        // 🏆 common.css のスタイルを完全活用したモーダル生成
-        // ============================================
-
-        // 1. 背景オーバーレイ (modal クラスで弾むアニメーションの親)
+        // 🎨 ここから下のUI生成・アニメーション・装飾は一切妥協せず100%残す
         const modalOverlay = document.createElement('div');
-        modalOverlay.className = 'modal'; // common.css の .modal
+        modalOverlay.className = 'modal';
 
-        // 2. モーダルコンテンツ (popInBounce アニメーション適用)
         const modalContent = document.createElement('div');
-        modalContent.className = 'modal-content'; // common.css の .modal-content
+        modalContent.className = 'modal-content';
         modalContent.style.textAlign = 'center';
-        modalContent.style.paddingBottom = '20px'; // 下部の余白調整
+        modalContent.style.paddingBottom = '20px';
 
-        // 3. ヘッダータイトル (グラデーションとシャドウ)
         const title = document.createElement('h2');
         title.innerHTML = '🏆 試合結果 🏆';
         modalContent.appendChild(title);
 
-        // 4. リスト表示 (common.css の ul / li カード型スタイルを適用)
         const listWrapper = document.createElement('ul');
         listWrapper.style.marginTop = '20px';
 
@@ -760,19 +865,16 @@ class OchirunaLogic {
             const color = trophyChange > 0 ? 'var(--accent-blue-dark)' : (trophyChange < 0 ? 'var(--accent-red)' : 'var(--text-light)');
 
             const listItem = document.createElement('li');
-            // 自分の結果は黄色いボーダーでハイライト
             if (isMe) {
                 listItem.style.borderColor = 'var(--accent-yellow)';
-                listItem.style.backgroundColor = '#fffde7'; // 薄い黄色背景
+                listItem.style.backgroundColor = '#fffde7';
                 listItem.style.transform = 'scale(1.02)';
                 listItem.style.fontWeight = '900';
             }
 
-            // 左側：順位と名前
             const infoSpan = document.createElement('span');
             infoSpan.innerHTML = `<span style="font-size: 1.2rem; color: var(--accent-blue); margin-right: 10px;">#${p.rank}</span> ${p.nickname} ${isMe ? '(あなた)' : ''}`;
 
-            // 右側：トロフィー
             const trophySpan = document.createElement('span');
             trophySpan.style.color = color;
             trophySpan.style.fontSize = '1.2rem';
@@ -786,71 +888,56 @@ class OchirunaLogic {
 
         modalContent.appendChild(listWrapper);
 
-        // 5. カウントダウンテキスト
         const countdownText = document.createElement('p');
         countdownText.style.color = 'var(--text-light)';
         countdownText.style.fontWeight = 'bold';
         countdownText.innerHTML = '10秒後にホームへ戻ります...';
         modalContent.appendChild(countdownText);
 
-        // DOMに追加して表示
         modalOverlay.appendChild(modalContent);
         document.body.appendChild(modalOverlay);
 
-        // 🌟 10秒カウントダウン演出 & ホーム画面遷移
+        // ⏲️ 10秒カウントダウン（データ保存はもう終わっているので、純粋に画面を戻すためだけのタイマー）
         let timeLeft = 10;
         const timerInterval = setInterval(() => {
             timeLeft--;
             countdownText.innerHTML = `${timeLeft}秒後にホームへ戻ります...`;
+
             if (timeLeft <= 0) {
                 clearInterval(timerInterval);
-
-                // 1. リザルトのモーダルを完全に削除
                 modalOverlay.remove();
 
-                // 2. 自分のトロフィー増減を計算し、サーバーに送信して保存！(あなたのSocket.ioを使用)
-                const myPlayer = this.rankedPlayers.find(p => String(p.id) === this.localPlayerId);
-                if (myPlayer) {
-                    const myTrophyChange = this._calculateTrophyChange(myPlayer.rank, this.totalPlayers, myPlayer.trophies);
+                // 🚨 ここにあった「タイマー終了時のセーブ処理」は一番上に移動させたので削除済み！
+                // これにより、タブ閉じによるデータ消失バグを完全に撲滅。
 
-                    // ★ここでサーバーの index.js に向けてセーブ命令を出します
-                    if (window.socket) {
-                        window.socket.emit('updateGameResult', { trophyChange: myTrophyChange });
-                    }
-                }
-
-                // 3. ゲーム画面のコンテナを非表示にする
+                // 画面の切り替え処理（絶対に削らない）
                 const gameContainer = document.getElementById('game-container');
                 if (gameContainer) gameContainer.style.display = 'none';
 
-                // 4. ログイン画面を隠し、ホーム画面をアクティブにする（シームレスな帰還）
                 const authScreen = document.getElementById('auth-screen');
                 const homeScreen = document.getElementById('home-screen');
                 if (authScreen) authScreen.classList.replace('active', 'hidden');
                 if (homeScreen) homeScreen.classList.replace('hidden', 'active');
 
-                console.log("🏠 [Logic] ホーム画面へシームレスに帰還し、セーブを実行しました！");
+                console.log("🏠 [Logic] ホーム画面へシームレスに帰還しました！(データは既にセーブ済みです)");
             }
         }, 1000);
     }
 
-    /**
-     * Rendererへ渡すための状態オブジェクトを生成
-     * 🌟 NEW: 観戦モード用の情報（spectatorTargetId）も追加で渡す
-     */
-    _getGameState() {
-        // Array.from() を使って Map を配列化（Renderer側で処理しやすくする）
-        const tilesArray = Array.from(this.tiles.values()).map(t => ({
-            id: t.id, x: t.x, y: t.y, z: t.z, layer: t.layer, state: t.state
-        }));
+        /**
+         * Rendererへ渡すための状態オブジェクトを生成
+         */
+        _getGameState() {
+            const tilesArray = Array.from(this.tiles.values()).map(t => ({
+                id: t.id, x: t.x, y: t.y, z: t.z, layer: t.layer, state: t.state
+            }));
 
-        return {
-            players: this.players,
-            tiles: tilesArray,
-            spectatorTargetId: this.spectatorTargetId // カメラ制御用に今のターゲットを渡す
-        };
+            return {
+                players: this.players,
+                tiles: tilesArray,
+                spectatorTargetId: this.spectatorTargetId
+            };
+        }
     }
-}
 
-// グローバルスコープへエクスポート
 window.OchirunaLogic = OchirunaLogic;

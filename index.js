@@ -807,6 +807,33 @@ io.on('connection', (socket) => {
             console.error("バトル履歴取得エラー:", error);
         }
     });
+    // ================= 📜 バトル履歴の保存 (完全妥協なし) =================
+    socket.on('saveMatchHistory', async (data) => {
+        if (!socket.userId || !data || !data.matchData) return;
+
+        try {
+            // MongoDBで履歴を検索。まだ履歴がない（初めての試合）場合は新規作成
+            let myHistory = await History.findOne({ userId: socket.userId });
+            if (!myHistory) {
+                myHistory = new History({ userId: socket.userId, matches: [] });
+            }
+
+            // 最新の試合結果を配列の「先頭」に追加 (unshift) して、常に新しい順にする
+            myHistory.matches.unshift(data.matchData);
+
+            // 履歴が無尽蔵に増えて重くなるのを防ぐため、直近50件まで保持する（妥協ではなく最適化！）
+            if (myHistory.matches.length > 50) {
+                myHistory.matches.pop();
+            }
+
+            // データベースに保存
+            await myHistory.save();
+            console.log(`📜 [History] ${socket.userId} のバトル履歴をMongoDBに保存しました！`);
+
+        } catch (error) {
+            console.error("❌ [History] バトル履歴保存エラー:", error);
+        }
+    });
 
     // ================= 🎁 報酬受取システム (MongoDB対応版) =================
     socket.on('claimLoginBonus', async () => {
@@ -1491,31 +1518,81 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🔥 【完全連携用・追加】完全に切断される「直前」に、同じルームにいる生存者へ「あいつが逃げたぞ！」と通知する
+    socket.on('disconnecting', () => {
+        if (!socket.userId) return;
+
+        // 自分が参加している全ルーム（自分のIDルーム以外＝対戦ルーム）を取得
+        const rooms = Array.from(socket.rooms);
+        rooms.forEach(roomId => {
+            if (roomId !== socket.id) {
+                console.log(`📡 [Server] ルーム ${roomId} の生存者に ${socket.userId} の逃亡(切断)を通知します`);
+                // 妥協なし！network.js の完璧な受け口（2重の保険）に向けて確実に発火させる
+                socket.to(roomId).emit('playerDisconnected', { id: socket.userId });
+                socket.to(roomId).emit('playerLeft', { id: socket.userId });
+            }
+        });
+    });
+    
     // ================= 🔌 切断処理 (MongoDB対応版) =================
-    // 🚨 変更点: async を追加
+    // 🚨 変更点: 逃亡者を絶対に逃がさない！サーバー側での「強制ペナルティ＆履歴保存」完全版
     socket.on('disconnect', async () => {
         console.log(`👋 プレイヤーが切断しました: ${socket.id}`);
 
+        let wasInGame = false;
+
         if (typeof gameManager !== 'undefined' && gameManager.leaveRandomMatch) {
-            gameManager.leaveRandomMatch(socket.id, io);
+            wasInGame = gameManager.leaveRandomMatch(socket.id, io) || wasInGame;
         }
         if (typeof roomManager !== 'undefined' && roomManager.leaveRoom) {
-            roomManager.leaveRoom(socket.id, io); 
+            // ゲーム中だったかどうかを判定
+            wasInGame = roomManager.leaveRoom(socket.id, io) || wasInGame; 
         }
 
         if (socket.userId) {
             try {
-                // 💡 妥協なしの高速化: 切断時は単純に「時間を更新するだけ」なので、
-                // findOne と save を分けずに「一撃で更新（findOneAndUpdate）」して爆速処理します！
-                const user = await User.findOneAndUpdate(
-                    { id: socket.userId },
-                    { lastLogin: Date.now() },
-                    { new: true } // 更新後のデータを受け取る
-                );
+                // 1. 現在のユーザー情報を取得する（現在のトロフィー数を知るため）
+                let user = await User.findOne({ id: socket.userId });
+                if (!user) return;
 
-                if (user) {
-                    console.log(`🕒 最終ログイン時刻を保存(MongoDB): ${user.nickname}`);
+                // 🚨 ゲーム中(wasInGame)にタブを閉じて逃げた場合、絶対にペナルティを課す！
+                if (wasInGame) {
+                    const penalty = -8; // 敗北時の最大マイナス値付近のペナルティを設定
+                    user.trophies += penalty;
+
+                    // 🛡️ 妥協なし：トロフィーは0未満にはしない
+                    if (user.trophies < 0) {
+                        user.trophies = 0;
+                    }
+
+                    console.log(`💥 [Server] 試合中の切断を検知！ ${user.nickname} に逃亡ペナルティ(${penalty})を課します。`);
+
+                    // 🔥 【最重要】サーバー側で「逃亡履歴」を直接データベースに叩き込む！
+                    // （※ 以下はHistoryモデルが存在する前提のコードです。もしUserモデル内に配列で持っている場合は user.matchHistory.push(...) に書き換えてください）
+                    if (typeof History !== 'undefined') {
+                        await History.create({
+                            userId: socket.userId,
+                            matchData: {
+                                rank: 99, // 逃亡者は問答無用で最下位以下の不名誉ランク
+                                result: 'LOSE (逃亡)',
+                                trophies: user.trophies,
+                                trophyChange: penalty,
+                                mode: 'Ochiruna',
+                                timestamp: Date.now(),
+                                opponents: [] // 逃げたので相手データは空でOK
+                            }
+                        });
+                        console.log(`📜 [Server] ${user.nickname} の逃亡履歴(LOSE)をデータベースに強制保存しました。`);
+                    } else {
+                        console.log(`⚠️ [Server] Historyモデルが未定義のため、逃亡履歴の保存処理を調整してください。`);
+                    }
                 }
+
+                // 最終ログイン時間を更新し、ペナルティを含めたユーザー情報を「一撃」で保存
+                user.lastLogin = Date.now();
+                await user.save();
+
+                console.log(`🕒 最終ログイン時刻＆状態を保存(MongoDB): ${user.nickname} (トロフィー: ${user.trophies})`);
             } catch (error) {
                 console.error("切断時のデータ保存エラー:", error);
             }

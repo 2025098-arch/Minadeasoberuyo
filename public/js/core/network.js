@@ -322,5 +322,34 @@ socket.on('gachaResult', (result) => {
     }
 });
 
+// ================= 🎮 ゲーム進行・マルチプレイ連携系 =================
+// 🚨 追加: サーバーからプレイヤーの切断(逃亡)通知を受け取り、フリーズ防止処理を発動する
+
+// ※サーバー側のイベント名が 'playerDisconnected' の場合
+socket.on('playerDisconnected', (data) => {
+    // データがオブジェクト型( {id: "..."} )でも、文字列型( "..." )でも確実に対応する妥協なしの設計
+    const disconnectedId = typeof data === 'object' ? (data.id || data.userId) : data;
+    console.log(`🔌 [Network] プレイヤー ${disconnectedId} の切断イベントを受信しました。即死判定を実行します。`);
+
+    // ゲーム中であり、logic.js が動いている場合のみ処理を実行
+    if (typeof window.gameManager !== 'undefined' && window.gameManager.logic) {
+        if (typeof window.gameManager.logic._handlePlayerDisconnect === 'function') {
+            window.gameManager.logic._handlePlayerDisconnect(disconnectedId);
+        }
+    }
+});
+
+// 🛡️ 妥協なしの保険: もしサーバー側の退出イベント名が 'playerLeft' だった場合も絶対に逃がさない
+socket.on('playerLeft', (data) => {
+    const disconnectedId = typeof data === 'object' ? (data.id || data.userId) : data;
+    console.log(`🔌 [Network] プレイヤー ${disconnectedId} の退出(playerLeft)を受信しました。即死判定を実行します。`);
+
+    if (typeof window.gameManager !== 'undefined' && window.gameManager.logic) {
+        if (typeof window.gameManager.logic._handlePlayerDisconnect === 'function') {
+            window.gameManager.logic._handlePlayerDisconnect(disconnectedId);
+        }
+    }
+});
+
 window.Network = Network;
 window.socket = socket;

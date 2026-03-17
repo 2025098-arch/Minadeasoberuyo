@@ -49,6 +49,11 @@ window.GameClient = {
             // 🌟 コンストラクタに myId を渡す
             this.currentGame = new GameClass('gameCanvas', window.socket, participants, myId);
 
+            // 🔥 【完全連携用・追加】network.js が「gameManager.logic」を探せるように橋渡しをする！妥協なし！
+            window.gameManager = window.gameManager || {};
+            // OchirunaGameの中にlogicがあればそれを、なければcurrentGame自体をセットする完璧な保険設計
+            window.gameManager.logic = this.currentGame.logic || this.currentGame;
+            
             if (typeof this.currentGame.start === 'function') {
                 this.currentGame.start();
             }
