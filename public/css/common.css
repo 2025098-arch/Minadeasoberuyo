@@ -1,66 +1,279 @@
 /* public/css/common.css */
 
-/* ゲーム全体の色設定（ブロスタのようなポップで少しダークな色合い） */
 :root {
-    --bg-dark: #1a1a2e;
-    --panel-bg: #16213e;
-    --text-light: #ffffff;
-    --accent-blue: #0f3460;
-    --accent-red: #e94560;
-    --accent-yellow: #f9a826;
+    --bg-color: #e1f5fe;
+    --panel-bg: #ffffff;
+    --text-color: #4f4f4f;
+    --text-light: #888888;
+    --accent-yellow: #ffca28;
+    --accent-yellow-dark: #f5b041;
+    --accent-blue: #03a9f4;
+    --accent-blue-dark: #0288d1;
+    --accent-red: #ff5252;
+    --accent-red-dark: #d32f2f;
+    --border-color: #e0e0e0;
+    --shadow-light: rgba(0, 0, 0, 0.1);
+    --shadow-medium: rgba(0, 0, 0, 0.25);
+    --shadow-heavy: rgba(0, 0, 0, 0.4);
 }
 
 body {
+    background-color: var(--bg-color);
+    background-image: linear-gradient(180deg, #e1f5fe 0%, #b3e5fc 100%);
+    color: var(--text-color);
+    font-weight: 700;
     margin: 0;
     padding: 0;
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-color: var(--bg-dark);
-    color: var(--text-light);
-    overflow: hidden; /* 画面のスクロールをなくす */
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* 画面の切り替え用クラス（超重要） */
-.screen {
-    display: none;
-    width: 100vw;
-    height: 100vh;
+/* カスタムスクロールバー（細かいこだわりを復元） */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
 }
-.screen.active {
-    display: block;
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
 }
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* 表示切り替え用 */
 .hidden {
     display: none !important;
 }
+.screen {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
 
-/* 基本のボタンデザイン */
+/* ============================
+   共通入力フォーム
+============================ */
+.form-group {
+    margin-bottom: 20px;
+    text-align: left;
+    width: 100%;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1rem;
+    color: var(--text-color);
+    text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
+}
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+    width: 100%;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
+    background: #fafafa;
+    color: var(--text-color);
+    font-size: 1.1rem;
+    outline: none;
+    box-sizing: border-box;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: inset 0 2px 4px var(--shadow-light);
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent-blue);
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(3, 169, 244, 0.2), inset 0 2px 4px var(--shadow-light);
+}
+
+/* ============================
+   妥協なしの立体ボタン
+============================ */
 button {
+    font-family: inherit;
     cursor: pointer;
-    font-weight: bold;
-    border: none;
-    border-radius: 8px;
-    transition: transform 0.1s, filter 0.2s;
-}
-button:hover {
-    filter: brightness(1.2);
-}
-button:active {
-    transform: scale(0.95); /* 押したときに少しへこむ */
+    font-weight: 900;
+    outline: none;
+    transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
+/* メインボタン（青・多重シャドウ） */
 .btn-primary {
-    background-color: var(--accent-red);
-    color: white;
-    padding: 15px 20px;
-    font-size: 1.2rem;
-}
-.btn-secondary {
+    padding: 16px 24px;
     background-color: var(--accent-blue);
     color: white;
-    padding: 10px 15px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 6px 0 var(--accent-blue-dark), 0 10px 15px var(--shadow-light);
+    text-shadow: 0 -1px 1px rgba(0,0,0,0.2);
 }
-.message-error {
-    color: var(--accent-red);
-    font-weight: bold;
-    height: 1.5em;
-    margin: 10px 0;
+.btn-primary:active {
+    transform: translateY(6px);
+    box-shadow: 0 0 0 var(--accent-blue-dark), 0 2px 5px var(--shadow-light);
+}
+
+/* サブボタン（グレー） */
+.btn-secondary {
+    padding: 14px 20px;
+    background-color: #e0e0e0;
+    color: #333;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 5px 0 #bdbdbd, 0 8px 10px var(--shadow-light);
+}
+.btn-secondary:active {
+    transform: translateY(5px);
+    box-shadow: 0 0 0 #bdbdbd, 0 2px 3px var(--shadow-light);
+}
+
+/* 危険・解除ボタン（赤） */
+.btn-danger {
+    padding: 14px 20px;
+    background-color: var(--accent-red);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 5px 0 var(--accent-red-dark), 0 8px 10px var(--shadow-light);
+    text-shadow: 0 -1px 1px rgba(0,0,0,0.2);
+}
+.btn-danger:active {
+    transform: translateY(5px);
+    box-shadow: 0 0 0 var(--accent-red-dark), 0 2px 3px var(--shadow-light);
+}
+
+/* 巨大ボタン（ゲーム開始用・黄色） */
+.btn-huge {
+    padding: 24px 40px;
+    font-size: 2rem;
+    background-color: var(--accent-yellow);
+    color: #6a4a00;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 8px 0 var(--accent-yellow-dark), 0 15px 20px var(--shadow-medium);
+    text-shadow: 1px 1px 0px rgba(255,255,255,0.5);
+}
+.btn-huge:active {
+    transform: translateY(8px);
+    box-shadow: 0 0 0 var(--accent-yellow-dark), 0 4px 6px var(--shadow-light);
+}
+
+/* 共通タブUI */
+.tabs {
+    display: flex;
+    margin-bottom: 25px;
+    background: #f5f5f5;
+    border-radius: 12px;
+    padding: 5px;
+}
+.tabs button {
+    flex: 1;
+    padding: 14px;
+    background: transparent;
+    color: var(--text-light);
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    box-shadow: none;
+    transition: all 0.3s ease;
+}
+.tabs button.active {
+    background: white;
+    color: var(--accent-blue);
+    box-shadow: 0 2px 8px var(--shadow-light);
+}
+.tabs button:active { transform: scale(0.98); }
+
+/* ============================
+   共通モーダル（極上の弾むアニメーション）
+============================ */
+.modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px); /* 背景ぼかし */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+.modal-content {
+    background-color: var(--panel-bg);
+    width: 85%;
+    max-width: 850px;
+    max-height: 85vh;
+    border-radius: 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.8);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popInBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes popInBounce {
+    0% { transform: scale(0.5); opacity: 0; }
+    50% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.modal-content h2 {
+    margin: 0;
+    background: linear-gradient(135deg, var(--accent-blue) 0%, #00bcd4 100%);
+    color: white;
+    padding: 20px 25px;
+    font-size: 1.6rem;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    z-index: 10;
+}
+.modal-content > *:not(h2) {
+    margin-left: 25px;
+    margin-right: 25px;
+}
+.modal-content > :last-child {
+    margin-bottom: 25px;
+}
+.modal-content > h2 + * {
+    margin-top: 25px;
+}
+
+/* 共通リスト表示（リッチなカード型） */
+ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0 0 20px 0;
+    max-height: 450px;
+    overflow-y: auto;
+    padding-right: 10px; /* スクロールバー用の余白 */
+}
+ul li {
+    background: #ffffff;
+    border: 2px solid var(--border-color);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 6px var(--shadow-light);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+ul li:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    border-color: var(--accent-blue);
 }

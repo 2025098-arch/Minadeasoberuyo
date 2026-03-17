@@ -1,47 +1,60 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Game Project</title>
-    <link rel="stylesheet" href="css/common.css">
-    <link rel="stylesheet" href="css/lobby.css">
-</head>
-<body>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>My Game Project</title>
+        <link rel="stylesheet" href="css/common.css">
+        <link rel="stylesheet" href="css/lobby.css">
+        <link rel="stylesheet" href="css/shop.css">
+    </head>
+    <body>
+        <div id="splash-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #e1f5fe; background-image: linear-gradient(180deg, #e1f5fe 0%, #b3e5fc 100%); color: #4f4f4f; display: flex; justify-content: center; align-items: center; z-index: 10000; transition: opacity 1s ease-in-out;">
+            <h1 style="font-size: 24px; font-weight: bold; letter-spacing: 2px;">by Soratobu Hanchahan and Gemini</h1>
+        </div>
 
-    <div id="auth-screen" class="screen active">
-        <div class="auth-container">
-            <h1>ゲームタイトル</h1>
+        <div id="auth-screen" class="screen active" style="display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
+            <div class="auth-container" style="width: 100%; max-width: 420px; background: white; padding: 30px; border-radius: 24px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto; text-align: center; box-sizing: border-box;">
+                <h1 style="margin-top: 0; margin-bottom: 20px; color: var(--accent-blue);">ゲームタイトル</h1>
 
-            <div class="auth-tabs">
-                <button id="tab-login" class="active">ログイン</button>
-                <button id="tab-register">新規作成</button>
-            </div>
-
-            <div class="input-form">
-                <input type="text" id="input-nickname" placeholder="ニックネーム" maxlength="15">
-
-                <div class="pin-wrapper">
-                    <input type="password" id="input-pin" placeholder="PIN (6桁の数字)" maxlength="6">
-                    <button id="btn-toggle-pin">表示</button>
+                <div class="auth-tabs" style="display: flex; margin-bottom: 25px; background: #f5f5f5; border-radius: 12px; padding: 5px;">
+                    <button id="tab-login" class="active" style="flex: 1;">ログイン</button>
+                    <button id="tab-register" style="flex: 1;">新規作成</button>
                 </div>
 
-                <div id="register-settings" style="display: none;">
-                    <h3>初期設定</h3>
-                    <label><input type="checkbox" id="setting-ranking-public" checked> 自分を総合順位に公開する</label>
-                    <label><input type="checkbox" id="setting-req-history" checked> バトル履歴からのフレンド申請を許可</label>
-                    <label><input type="checkbox" id="setting-req-ranking" checked> 総合順位からのフレンド申請を許可</label>
+                <div class="input-form">
+                    <input type="text" id="input-nickname" placeholder="ニックネーム" maxlength="15" style="width: 100%; box-sizing: border-box; margin-bottom: 15px;">
+
+                    <div class="pin-wrapper" style="display: flex; gap: 10px; margin-bottom: 15px; width: 100%; justify-content: flex-start; box-sizing: border-box;">
+                        <input type="password" id="input-pin" placeholder="PIN (6桁の数字)" maxlength="6" style="flex: 1; margin-bottom: 0; box-sizing: border-box;">
+                        <button id="btn-toggle-pin" class="btn-secondary" style="padding: 0 15px; margin-bottom: 0; border-radius: 12px; flex-shrink: 0; white-space: nowrap;">表示</button>
+                    </div>
+
+                    <div id="register-settings" style="display: none; width: 100%; box-sizing: border-box; background: #f8f9fa; border: 2px solid var(--border-color); border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; color: var(--text-color); border-bottom: 2px dashed #e0e0e0; padding-bottom: 10px;">⚙️ 初期設定</h3>
+
+                        <label style="display: flex; align-items: flex-start; text-align: left; margin-bottom: 15px; line-height: 1.5; word-break: keep-all; font-size: 0.95rem; cursor: pointer;">
+                            <input type="checkbox" id="setting-ranking-public" checked style="margin-top: 2px; margin-right: 10px; flex-shrink: 0; width: 20px; height: 20px; cursor: pointer;">
+                            <span>自分を総合順位に公開する</span>
+                        </label>
+                        <label style="display: flex; align-items: flex-start; text-align: left; margin-bottom: 15px; line-height: 1.5; word-break: keep-all; font-size: 0.95rem; cursor: pointer;">
+                            <input type="checkbox" id="setting-req-history" checked style="margin-top: 2px; margin-right: 10px; flex-shrink: 0; width: 20px; height: 20px; cursor: pointer;">
+                            <span>バトル履歴からのフレンド申請を許可</span>
+                        </label>
+                        <label style="display: flex; align-items: flex-start; text-align: left; margin-bottom: 0; line-height: 1.5; word-break: keep-all; font-size: 0.95rem; cursor: pointer;">
+                            <input type="checkbox" id="setting-req-ranking" checked style="margin-top: 2px; margin-right: 10px; flex-shrink: 0; width: 20px; height: 20px; cursor: pointer;">
+                            <span>総合順位からのフレンド申請を許可</span>
+                        </label>
+                    </div>
+
+                    <p id="auth-message" class="message-error" style="min-height: 24px; margin: 10px 0; font-weight: bold;"></p>
+
+                    <button id="btn-submit" class="btn-primary" style="width: 100%;">ログインする</button>
                 </div>
-
-                <p id="auth-message" class="message-error"></p>
-
-                <button id="btn-submit" class="btn-primary">ログインする</button>
             </div>
         </div>
-    </div>
 
     <div id="home-screen" class="screen hidden">
-
         <header class="home-header">
             <div class="profile-section" id="btn-profile" style="cursor: pointer;" title="プロフィールを見る">
                 <h2 id="ui-nickname">PlayerName</h2>
@@ -61,7 +74,6 @@
         </header>
 
         <div class="home-main-layout">
-
             <aside class="sidebar-left">
                 <button id="btn-mail">✉️ メール</button>
                 <button id="btn-history">📜 バトル履歴</button>
@@ -71,16 +83,12 @@
             </aside>
 
             <main class="center-area">
-                <div id="character-canvas-container">
+                <div id="character-canvas-container" style="width: 100%; height: 400px;">
                     <p class="placeholder-text">ここに自分が操作する立体的なキャラが回転して表示されます</p>
                 </div>
 
                 <div class="game-modes">
-                    <button id="btn-random-match" class="btn-large btn-play">ランダムマッチ</button>
-                    <div class="sub-modes">
-                        <button id="btn-private-room" class="btn-medium">プライベートルーム</button>
-                        <button id="btn-practice" class="btn-medium">練習モード</button>
-                    </div>
+                    <button id="btn-game-start" style="padding: 15px; font-size: 20px; font-weight: bold; background: #ff5722; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px;">🎮 ゲームスタート</button>
                 </div>
             </main>
 
@@ -88,9 +96,7 @@
                 <button id="btn-shop">🛒 ショップ</button>
                 <button id="btn-backpack">🎒 バックパック</button>
                 <button id="btn-gacha">🎰 ガチャガチャ</button>
-                <button id="btn-settings">⚙️ 設定</button>
             </aside>
-
         </div>
     </div>
 
@@ -101,17 +107,104 @@
                 <button id="btn-close-modal">✖</button>
             </div>
             <div id="modal-content" class="modal-body">
-                </div>
+            </div>
         </div>
     </div>
 
-<script src="/socket.io/socket.io.js"></script>
-    <script src="js/lib/three.min.js"></script>
+    <div id="shop-screen" class="hidden">
+        <div class="shop-container">
+            <div class="shop-header">
+                <h2>🛒 ショップ</h2>
+                <div class="shop-tabs">
+                    <button id="shop-tab-characters" class="active">キャラクター</button>
+                    <button id="shop-tab-skins">スキン</button>
+                    <button id="shop-tab-items">アイテム</button>
+                </div>
+                <button id="btn-close-shop" class="btn-close">✖</button>
+            </div>
 
-    <script src="js/utils/constants.js"></script>
-    <script src="js/core/network.js"></script>
-    <script src="js/core/model_renderer.js"></script>
-    <script src="js/core/ui.js"></script>
+            <div class="shop-content">
+                <div id="shop-list-area" class="shop-list-area"></div>
 
-</body>
-</html>
+                <div id="shop-detail-area" class="shop-detail-area hidden">
+                    <div class="detail-left">
+                        <div id="shop-model-preview" style="width: 100%; height: 300px;"></div>
+                    </div>
+                    <div class="detail-right">
+                        <h3 id="shop-detail-name">キャラクター名</h3>
+                        <div class="detail-stats">
+                            <p>🏃 スピード: <span id="shop-detail-speed">100</span></p>
+                            <p>💪 パワー: <span id="shop-detail-power">100</span></p>
+                            <p>✨ 特殊能力: <span id="shop-detail-special">なし</span></p>
+                        </div>
+                        <p id="shop-detail-desc" class="detail-desc">ここに説明文が入ります。</p>
+
+                        <div class="detail-action">
+                            <span id="shop-detail-price" class="price">🪙 100</span>
+                            <button id="btn-buy-item" class="btn-primary">購入する</button>
+                        </div>
+                        <button id="btn-back-to-list" class="btn-secondary">一覧に戻る</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="wardrobe-modal" class="modal hidden" style="position: absolute; top: 10%; left: 10%; background: white; padding: 20px; border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>スキン変更 (人間)</h2>
+            <p>好きな色を選んでね！</p>
+
+            <div id="skin-palette-container" class="palette-grid" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                </div>
+
+            <div id="custom-skin-editor" class="hidden">
+                <h3>自分だけの服をデザイン！</h3>
+                <canvas id="custom-paint-canvas" width="256" height="256"></canvas>
+                <div class="paint-controls">
+                    <label>色: <input type="color" id="paint-color" value="#000000"></label>
+                    <label>太さ: <input type="range" id="paint-size" min="1" max="20" value="5"></label>
+                    <button id="btn-clear-canvas" class="btn-secondary">クリア</button>
+                    <button id="btn-apply-custom" class="btn-primary">服に適用する</button>
+                </div>
+            </div>
+
+            <button id="btn-close-wardrobe" class="btn-secondary" style="margin-top: 20px;">閉じる</button>
+        </div>
+    </div>
+
+    <div id="game-container" style="display: none; width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 100;"></div>
+    
+        <script src="/socket.io/socket.io.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+
+            <script src="js/utils/constants.js"></script>
+            <script src="js/core/network.js"></script>
+            <script src="js/core/input.js"></script> <script src="js/core/models/Dog.js"></script>
+            <script src="js/core/models/Robot.js"></script>
+            <script src="js/core/models/Pencil.js"></script>
+            <script src="js/core/models/Apple.js"></script>
+            <script src="js/core/models/Human.js"></script>
+            <script src="js/core/models/Sushi.js"></script>
+            <script src="js/core/model_renderer.js"></script>
+
+
+        <script src="/js/core/game_client.js"></script>
+        <script src="js/core/game_ui.js"></script>
+            <script src="js/core/history_ui.js"></script>
+            <script src="js/core/ranking_ui.js"></script>
+            <script src="js/core/rewards_ui.js"></script>
+            <script src="js/core/mail_ui.js"></script>
+            <script src="js/core/friends_ui.js"></script>
+            <script src="js/core/profile_ui.js"></script>
+            <script src="js/core/gacha_ui.js"></script>
+            <script src="js/core/backpack_ui.js"></script>
+            <script src="js/core/shop_ui.js"></script>
+            <script src="js/core/ui.js"></script>
+
+        <script src="/games/ochiruna/logic.js"></script>
+        <script src="/games/ochiruna/renderer.js"></script>
+        <script src="/games/ochiruna/input.js"></script>
+        <script src="/games/ochiruna/main.js"></script>
+        </body>
+        </html>

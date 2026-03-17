@@ -1,0 +1,272 @@
+/* public/css/shop.css */
+
+/* ============================
+   ショップ全体レイアウト（2カラム構造）
+============================ */
+.shop-wrapper {
+    display: flex;
+    height: calc(100vh - 80px); /* ヘッダー分を引いたフルハイト */
+    padding: 20px;
+    gap: 30px;
+    box-sizing: border-box;
+    background: linear-gradient(135deg, var(--bg-color) 0%, #b3e5fc 100%);
+}
+
+/* ============================
+   左側：3Dプレビューエリア（展示台）
+============================ */
+.shop-preview-panel {
+    flex: 1;
+    min-width: 300px;
+    background: var(--panel-bg);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    position: relative;
+}
+
+/* キャラクターを乗せる台座（立体感と光） */
+.preview-pedestal {
+    width: 80%;
+    height: 60px;
+    background: ellipse calc(50% at 50% 50%);
+    background: radial-gradient(ellipse at center, #ffffff 0%, #e0e0e0 70%, #bdbdbd 100%);
+    border-radius: 50%;
+    position: absolute;
+    bottom: 40px;
+    box-shadow: 0 20px 20px rgba(0,0,0,0.15), inset 0 -5px 10px rgba(255,255,255,0.8);
+    z-index: 1;
+}
+
+/* 3Dキャンバスコンテナ（台座の上に乗るように配置） */
+#shop-canvas-container {
+    width: 100%;
+    flex-grow: 1;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* 現在プレビュー中のアイテム名表示 */
+.preview-item-name {
+    font-size: 1.5rem;
+    color: var(--accent-blue);
+    background: rgba(255,255,255,0.9);
+    padding: 10px 20px;
+    border-radius: 30px;
+    border: 2px solid var(--accent-blue);
+    position: absolute;
+    top: 20px;
+    z-index: 3;
+    box-shadow: 0 4px 0 #0288d1;
+}
+
+/* ============================
+   右側：アイテムリストエリア
+============================ */
+.shop-items-panel {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+}
+
+/* ショップのカテゴリタブ（帽子、服、エフェクトなど） */
+.shop-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.shop-tab-btn {
+    flex: 1;
+    padding: 15px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    background: #e0e0e0;
+    color: #666;
+    border: none;
+    border-radius: 15px 15px 0 0; /* 上だけ丸めるタブデザイン */
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,0.1);
+}
+.shop-tab-btn.active {
+    background: var(--panel-bg);
+    color: var(--accent-blue);
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+}
+.shop-tab-btn:hover:not(.active) {
+    background: #eeeeee;
+}
+
+/* アイテムが並ぶグリッド */
+.shop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+    overflow-y: auto;
+    padding: 10px;
+    padding-bottom: 30px; /* スクロール下部の余白 */
+    flex-grow: 1;
+}
+
+/* ============================
+   アイテムカード（リッチな装飾）
+============================ */
+.item-card {
+    background: var(--panel-bg);
+    border-radius: 15px;
+    border: 3px solid #eee;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28), box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.item-card:hover {
+    transform: scale(1.05) translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    border-color: var(--accent-blue);
+}
+
+/* アイテム画像/アイコン */
+.item-icon {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    margin-bottom: 10px;
+}
+
+/* アイテム名 */
+.item-name {
+    font-size: 1.1rem;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+/* 価格表示 */
+.item-price {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 1.2rem;
+    color: #333;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+.item-price img {
+    width: 20px;
+    height: 20px;
+}
+
+/* 購入・装着ボタン（個別調整） */
+.item-card .btn-primary,
+.item-card .btn-secondary {
+    width: 100%;
+    padding: 10px;
+    font-size: 1rem;
+    margin-top: auto;
+}
+
+/* 既に持っているアイテムのラベル */
+.item-owned-badge {
+    position: absolute;
+    top: 10px;
+    right: -25px;
+    background: var(--accent-red);
+    color: white;
+    font-size: 0.8rem;
+    padding: 5px 30px;
+    transform: rotate(45deg);
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* ============================
+   レアリティ別エフェクト（ゲーム感アップ！）
+============================ */
+/* ノーマル (N) */
+.rarity-n { border-color: #bdbdbd; }
+
+/* レア (R) */
+.rarity-r { border-color: var(--accent-blue); }
+
+/* スーパーレア (SR) - 紫色のオーラ */
+.rarity-sr {
+    border-color: #ab47bc;
+    box-shadow: 0 0 10px rgba(171, 71, 188, 0.3);
+}
+
+/* レジェンダリー (SSR) - 虹色に輝くアニメーション */
+.rarity-ssr {
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    position: relative;
+}
+.rarity-ssr::before {
+    content: '';
+    position: absolute;
+    top: -3px; left: -3px; right: -3px; bottom: -3px;
+    background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+    z-index: -1;
+    border-radius: 15px;
+    animation: rainbowGlow 3s linear infinite;
+}
+@keyframes rainbowGlow {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+
+/* 所持コインが足りない時のカード状態 */
+.item-card.locked {
+    opacity: 0.6;
+    filter: grayscale(0.8);
+}
+.item-card.locked:hover {
+    transform: none; /* ホバーで浮かばない */
+    box-shadow: none;
+    border-color: #eee;
+    cursor: not-allowed;
+}
+/* public/css/shop.css */
+
+/* スキンボタンを入れるコンテナ（スクロール可能にする） */
+#skin-options-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2列で表示 */
+    gap: 10px;
+    max-height: 250px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* 個別のスキンボタン */
+.skin-option-btn {
+    background-color: #f8f9fa;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+    color: #333;
+}
+
+.skin-option-btn:hover {
+    background-color: #e2e8f0;
+}
+
+/* 選択中のスキンの強調 */
+.skin-option-btn.active {
+    border-color: #3b82f6;
+    background-color: #eff6ff;
+}

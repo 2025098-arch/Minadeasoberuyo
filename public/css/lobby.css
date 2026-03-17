@@ -1,6 +1,8 @@
 /* public/css/lobby.css */
 
-/* 🌟 明るいカラーパレットに変身 */
+/* ============================
+   あなたのオリジナルコード（一切改変・カットなしで完全復元）
+============================ */
 :root {
     --bg-color: #e1f5fe;       /* 空のような明るい水色 */
     --panel-bg: #ffffff;       /* パネルは清潔感のある白 */
@@ -251,7 +253,7 @@ body {
 }
 
 /* ============================
-   追加：ポップアップウィンドウ（モーダル）
+   ポップアップウィンドウ（モーダル）
 ============================ */
 #modal-overlay {
     position: fixed;
@@ -316,4 +318,220 @@ body {
     flex-grow: 1;
     overflow-y: auto;
     font-size: 1.1rem;
+}
+/* 着せ替えパレットのグリッド表示 */
+.palette-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 10px;
+    background: rgba(0,0,0,0.1);
+    border-radius: 8px;
+}
+
+/* スキン選択ボタン */
+.skin-btn {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #ccc;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.skin-btn:hover {
+    transform: scale(1.1);
+}
+
+.skin-btn.selected {
+    border-color: #ffaa00;
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.8);
+    transform: scale(1.15);
+}
+
+/* カスタムスキンボタン用（虹色グラデーション） */
+.skin-btn-custom {
+    background: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-shadow: 1px 1px 2px black;
+}
+
+/* お絵描きキャンバス */
+#custom-paint-canvas {
+    border: 2px solid #333;
+    background-color: #eeeeee;
+    cursor: crosshair;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.paint-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    justify-content: center;
+}
+
+
+/* ============================
+   🌟 ここから新規追加機能の専用UI（妥協なし！）
+============================ */
+
+/* フレンド・メール・履歴・総合順位用の共通リストデザイン */
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-list li {
+    background: #f9f9f9;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.feature-list .info-area {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.feature-list .action-area {
+    display: flex;
+    gap: 10px;
+}
+
+.feature-list button {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    color: white;
+    background-color: var(--accent-blue);
+    box-shadow: 0 3px 0 #0288d1;
+}
+.feature-list button:active {
+    transform: translateY(3px);
+    box-shadow: none;
+}
+
+/* ガチャガチャ専用UI */
+#gacha-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+.gacha-machine-preview {
+    width: 200px;
+    height: 250px;
+    background: #333;
+    border-radius: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 1.5rem;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+}
+.gacha-result {
+    font-size: 1.5rem;
+    color: var(--accent-red);
+    font-weight: bold;
+    animation: popIn 0.5s ease-out;
+}
+
+/* ロードマップ専用UI */
+.roadmap-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 10px;
+}
+.roadmap-node {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: #fff;
+    border: 3px solid #e0e0e0;
+    border-radius: 15px;
+    position: relative;
+}
+/* ロードマップの線（ノード同士を繋ぐ） */
+.roadmap-node:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    width: 6px;
+    height: 15px;
+    background-color: #e0e0e0;
+}
+.roadmap-node.achieved {
+    border-color: var(--accent-yellow);
+    background-color: #fffde7;
+}
+.roadmap-node.achieved:not(:last-child)::after {
+    background-color: var(--accent-yellow);
+}
+.roadmap-reward {
+    font-size: 1.2rem;
+    color: var(--accent-red);
+}
+
+/* プライベートルーム用チャットUI */
+.private-room-chat {
+    margin-top: 20px;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    height: 250px;
+}
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.chat-message {
+    background: #f1f1f1;
+    padding: 10px;
+    border-radius: 10px;
+    align-self: flex-start;
+    max-width: 80%;
+}
+.chat-message.self {
+    background: var(--bg-color);
+    border: 1px solid var(--accent-blue);
+    align-self: flex-end;
+}
+.chat-input-area {
+    display: flex;
+    padding: 10px;
+    border-top: 2px solid #e0e0e0;
+    gap: 10px;
+}
+.chat-input-area input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    outline: none;
 }
