@@ -61,6 +61,7 @@ function startGame(io) {
 
     waitingPlayers.forEach(p => {
         p.socket.join(roomId); // Socket.ioの機能で専用ルーム（グループ）に入れる
+        p.socket.isPlayingGame = true; // 🔥 【追加】「試合中」の刻印を打つ！妥協なし！
         p.socket.emit('matchFound', {
             roomId: roomId,
             game: selectedGame,

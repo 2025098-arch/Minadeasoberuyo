@@ -323,32 +323,70 @@ socket.on('gachaResult', (result) => {
 });
 
 // ================= 🎮 ゲーム進行・マルチプレイ連携系 =================
-// 🚨 追加: サーバーからプレイヤーの切断(逃亡)通知を受け取り、フリーズ防止処理を発動する
+// 🚨 修正: サーバーからプレイヤーの切断(逃亡)通知を受け取り、ゲーム本体の完璧な処刑システムを発動する
 
-// ※サーバー側のイベント名が 'playerDisconnected' の場合
-socket.on('playerDisconnected', (data) => {
-    // データがオブジェクト型( {id: "..."} )でも、文字列型( "..." )でも確実に対応する妥協なしの設計
-    const disconnectedId = typeof data === 'object' ? (data.id || data.userId) : data;
-    console.log(`🔌 [Network] プレイヤー ${disconnectedId} の切断イベントを受信しました。即死判定を実行します。`);
+// 🔥 【完全共通化】DisconnectedとLeftの両方で発動する、妥協なしの絶対処刑関数
+function executeAbsoluteExecution(disconnectedId) {
+    console.log(`🔌 [Network] プレイヤー ${disconnectedId} の完全処刑シーケンスを開始します。`);
 
-    // ゲーム中であり、logic.js が動いている場合のみ処理を実行
+    // --- 1. logic.js 内のデータ処刑（配列、Object、Map 全対応） ---
     if (typeof window.gameManager !== 'undefined' && window.gameManager.logic) {
-        if (typeof window.gameManager.logic._handlePlayerDisconnect === 'function') {
-            window.gameManager.logic._handlePlayerDisconnect(disconnectedId);
+        let logic = window.gameManager.logic;
+
+        // 正規の切断処理ルートがあれば優先
+        if (typeof logic._handlePlayerDisconnect === 'function') {
+            logic._handlePlayerDisconnect(disconnectedId);
+        }
+
+        // 🛡️ 妥協なしフェイルセーフ：全ての可能性を網羅して探す
+        const targetCollections = ['participants', 'players', 'otherPlayers', 'remotePlayers'];
+        for (const colName of targetCollections) {
+            let collection = logic[colName];
+            if (!collection) continue;
+
+            let p = null;
+            if (Array.isArray(collection)) {
+                p = collection.find(p => String(p.id) === String(disconnectedId) || String(p.userId) === String(disconnectedId));
+            } else if (typeof collection === 'object') {
+                // Map や Object 形式にも完全対応
+                p = collection.get ? collection.get(disconnectedId) : collection[disconnectedId];
+            }
+
+            if (p) {
+                p.isDead = true;
+                p.hp = 0;
+                if (p.y !== undefined) p.y = -9999; // 🔥 ご指摘の通り！奈落の底（マイナス）へ叩き落とす！
+                if (p.mesh) p.mesh.visible = false;
+            }
         }
     }
+
+    // --- 2. main.js (OchirunaGame) が抱える「亡霊データ(蘇生の原因)」の完全消去 ---
+    if (window.GameClient && window.GameClient.currentGame) {
+        let game = window.GameClient.currentGame;
+
+        // 補間ターゲット（これがあるからゾンビが蘇生する）を削除して、二度と描画させない！
+        if (game.interpolationTargets && game.interpolationTargets[disconnectedId]) {
+            delete game.interpolationTargets[disconnectedId];
+            console.log(`👻 [Network] ${disconnectedId} の補間用亡霊データを消去し、蘇生を阻止しました。`);
+        }
+
+        // rawParticipants などの元データも念のため処刑
+        if (game.usersData && game.usersData[disconnectedId]) {
+            game.usersData[disconnectedId].isDead = true;
+        }
+    }
+}
+
+// サーバーからの2種類の「逃亡通知」両方で、確実に同じ処刑を実行する
+socket.on('playerDisconnected', (data) => {
+    const disconnectedId = typeof data === 'object' ? (data.id || data.userId) : data;
+    executeAbsoluteExecution(disconnectedId);
 });
 
-// 🛡️ 妥協なしの保険: もしサーバー側の退出イベント名が 'playerLeft' だった場合も絶対に逃がさない
 socket.on('playerLeft', (data) => {
     const disconnectedId = typeof data === 'object' ? (data.id || data.userId) : data;
-    console.log(`🔌 [Network] プレイヤー ${disconnectedId} の退出(playerLeft)を受信しました。即死判定を実行します。`);
-
-    if (typeof window.gameManager !== 'undefined' && window.gameManager.logic) {
-        if (typeof window.gameManager.logic._handlePlayerDisconnect === 'function') {
-            window.gameManager.logic._handlePlayerDisconnect(disconnectedId);
-        }
-    }
+    executeAbsoluteExecution(disconnectedId);
 });
 
 window.Network = Network;

@@ -161,6 +161,7 @@ module.exports = {
             }));
 
             room.players.forEach(p => {
+                p.socket.isPlayingGame = true; // 🔥 【追加】「試合中」の刻印を打つ！妥協なし！
                 p.socket.emit('privateRoomStart', { roomId: roomCode, game: gameToPlay, participants: participantData });
             });
 
