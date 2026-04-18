@@ -370,7 +370,13 @@
                     contentHtml = `
                         <div style="padding: 20px 15px; animation: fadeIn 0.3s;">
                             <div style="font-size: 48px; text-align: center; margin-bottom: 10px;">🎯</div>
-                            <p style="color: #555; font-size: 14px; margin-bottom: 20px; text-align: center;">AIを相手に操作の練習ができます。</p>
+                            <p style="color: #555; font-size: 14px; margin-bottom: 20px; text-align: center;">AIを相手に操作の練習ができます。（トロフィーは変動しません）</p>
+
+                            <label style="display: block; margin-bottom: 10px; font-weight: bold;">🎮 ミニゲーム選択</label>
+                            <select id="practice-game-select" style="width: 100%; padding: 10px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px;">
+                                <option value="game1">絶対に落ちるな (Ochiruna)</option>
+                                </select>
+
                             <label style="display: block; margin-bottom: 10px; font-weight: bold;">🤖 AIの強さ</label>
                             <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                                 <label style="flex: 1; text-align: center; background: #f0f0f0; padding: 10px; border-radius: 5px; cursor: pointer;"><input type="radio" name="ai-level" value="easy" checked> 弱い</label>
@@ -521,8 +527,34 @@
                     });
 
                     document.getElementById('btn-start-practice')?.addEventListener('click', () => {
-                        ui.showNotification(`AI ${range.value}人で練習モードを開始します`, 'info');
+                        // 設定値を取得
+                        const aiCount = parseInt(range.value);
+                        const aiLevel = document.querySelector('input[name="ai-level"]:checked').value;
+                        const selectedGame = document.getElementById('practice-game-select').value;
+
+                        ui.showNotification(`AI ${aiCount}人（強さ: ${aiLevel}）で ${selectedGame} の練習を開始します！`, 'info');
                         ui.closeModal();
+
+                        // 🌟 1. 参加者リスト（自分）を作る
+                        const myId = localStorage.getItem('userId') || "guest_123";
+                        const myNickname = "あなた(練習)"; // 好きな名前に取得し直してもOK
+                        let participants = [
+                            { id: myId, nickname: myNickname, isAI: false }
+                        ];
+
+                        // 🌟 2. 参加者リスト（AI）を人数分だけ追加する
+                        for (let i = 0; i < aiCount; i++) {
+                            participants.push({
+                                id: `cpu_${i}`,
+                                nickname: `AIプレイヤー${i + 1}`,
+                                isAI: true,        // これが超重要！
+                                aiLevel: aiLevel   // 'easy', 'normal', 'hard'
+                            });
+                        }
+
+                        // 🌟 3. 練習モードフラグを立てて、ゲームクライアントを直接発火！
+                        window.isPracticeMode = true; // 練習モードであることを全体に知らせる
+                        window.GameClient.startMiniGame(selectedGame, participants);
                     });
                 }
             }, // 💡 修正箇所2：ここに関数を閉じる「},」が抜けていました！

@@ -59,57 +59,71 @@ class InputManager {
     }
 
     // ========================================================
-    // ⌨️ PC: キーボード操作 (WASD / 矢印 / スペース)
+    // ⌨️ PC: キーボード操作 (WASD / 矢印 / スペース / 1・2キーで能力・アイテム)
     // ========================================================
     _setupKeyboard() {
-        document.addEventListener("keydown", (e) => {
-            if (e.repeat) return; // 押しっぱなしによる連続発火を無視
-            switch (e.code) {
-                case "KeyW":
-                case "ArrowUp":
-                    this.keys.forward = true;
-                    break;
-                case "KeyS":
-                case "ArrowDown":
-                    this.keys.backward = true;
-                    break;
-                case "KeyA":
-                case "ArrowLeft":
-                    this.keys.left = true;
-                    break;
-                case "KeyD":
-                case "ArrowRight":
-                    this.keys.right = true;
-                    break;
-                case "Space":
-                    this.keys.jump = true;
-                    break;
-            }
-        });
+    document.addEventListener("keydown", (e) => {
+    if (e.repeat) return; // 押しっぱなしによる連続発火を無視
+    switch (e.code) {
+    case "KeyW":
+    case "ArrowUp":
+    this.keys.forward = true;
+    break;
+    case "KeyS":
+    case "ArrowDown":
+    this.keys.backward = true;
+    break;
+    case "KeyA":
+    case "ArrowLeft":
+    this.keys.left = true;
+    break;
+    case "KeyD":
+    case "ArrowRight":
+    this.keys.right = true;
+    break;
+    case "Space":
+    this.keys.jump = true;
+    break;
+    // 🌟 追加: 1キー（テンキーの1も含む）で特殊能力ボタンを直接叩く
+    case "Digit1":
+    case "Numpad1": {
+    const abilityBtn = document.getElementById("ochiruna-ability-btn");
+    if (abilityBtn) abilityBtn.click();
+    break;
+    }
+    // 🌟 追加: 2キー（テンキーの2も含む）でアイテムボタンを直接叩く
+    case "Digit2":
+    case "Numpad2": {
+    const itemBtn = document.getElementById("ochiruna-item-btn");
+    if (itemBtn) itemBtn.click();
+    break;
+    }
+    }
+    });
 
-        document.addEventListener("keyup", (e) => {
-            switch (e.code) {
-                case "KeyW":
-                case "ArrowUp":
-                    this.keys.forward = false;
-                    break;
-                case "KeyS":
-                case "ArrowDown":
-                    this.keys.backward = false;
-                    break;
-                case "KeyA":
-                case "ArrowLeft":
-                    this.keys.left = false;
-                    break;
-                case "KeyD":
-                case "ArrowRight":
-                    this.keys.right = false;
-                    break;
-                case "Space":
-                    this.keys.jump = false;
-                    break;
-            }
-        });
+    document.addEventListener("keyup", (e) => {
+    switch (e.code) {
+    case "KeyW":
+    case "ArrowUp":
+    this.keys.forward = false;
+    break;
+    case "KeyS":
+    case "ArrowDown":
+    this.keys.backward = false;
+    break;
+    case "KeyA":
+    case "ArrowLeft":
+    this.keys.left = false;
+    break;
+    case "KeyD":
+    case "ArrowRight":
+    this.keys.right = false;
+    break;
+    case "Space":
+    this.keys.jump = false;
+    break;
+    }
+    });
     }
 
     // ========================================================
