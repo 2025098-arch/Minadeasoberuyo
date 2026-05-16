@@ -1078,45 +1078,71 @@
         }, 6000);
     }
 
-    /**
-     * ブロスタ風のトロフィー増減を計算する
-     */
-    _calculateTrophyChange(rank, totalPlayers, currentTrophies) {
-        if (totalPlayers <= 1) return 0;
+        /**
+         * ブロスタ風のトロフィー増減を計算する（🌟原因究明デバッグ＆完全動作版）
+         */
+        _calculateTrophyChange(rank, totalPlayers, currentTrophies) {
+            if (totalPlayers <= 1) return 0;
 
-        const position = (rank - 1) / (totalPlayers - 1);
-        let winBase = 8;
-        let loseBase = 0;
+            // 🔥 【原因究明の最強ログ】
+            // ここで undefined や NaN が出ている場合、サーバーからトロフィー数が渡ってきていません！
+            console.log(`🔍 [Logic] トロフィー計算開始 - 順位: ${rank}/${totalPlayers}, 受け取ったトロフィーデータ:`, currentTrophies);
 
-        if (currentTrophies < 100) {
-            loseBase = 1;
-        } else if (currentTrophies < 300) {
-            loseBase = 3;
-        } else if (currentTrophies < 500) {
-            loseBase = 6;
-        } else if (currentTrophies < 800) {
-            loseBase = 8;
-        } else {
-            loseBase = 10;
+            // トロフィーが未定義(undefined)の場合は、コンソールに警告を赤字で出す！
+            if (currentTrophies === undefined || currentTrophies === null) {
+                console.warn("⚠️ [Logic] 異常検知: トロフィー数が undefined です！クライアントのプレイヤー情報(p.trophies)にデータが存在しません。");
+            }
+
+            // 🔥 【バグ修正・最強の保険】
+            // トロフィーが文字列や undefined で渡ってきても確実に「数値」に変換する！
+            const t = Number(currentTrophies) || 0;
+
+            const position = (rank - 1) / (totalPlayers - 1); // 0.0 (1位) ～ 1.0 (最下位)
+
+            // 🌟 1. 参加人数による「勝利」のスケール（多人数ほど1位の報酬が上がる！）
+            let winBase = Math.floor(6 + (totalPlayers * 0.5));
+
+            // 🌟 2. トロフィー帯による基礎ペナルティの大幅増加（ガッツリ減らす）
+            let basePenalty = 0;
+            if (t < 100) {
+                basePenalty = 3;  // 初心者帯
+            } else if (t < 300) {
+                basePenalty = 8;  // ブロンズ帯
+            } else if (t < 500) {
+                basePenalty = 14; // シルバー帯
+            } else if (t < 800) {
+                basePenalty = 20; // ゴールド帯
+            } else {
+                basePenalty = 25; // ガチ勢帯（最下位の痛手は絶大）
+            }
+
+            // 🌟 3. 参加人数が多いほど、最下位になった時の「ドベの重み」も増やす
+            const penaltyScale = 1 + (Math.min(totalPlayers, 30) / 30) * 0.5;
+            let loseBase = Math.floor(basePenalty * penaltyScale);
+
+            let change = 0;
+            if (position < 0.5) {
+                // 上位半分：勝利側の計算 (+)
+                change = Math.round(winBase * (1 - position * 2));
+            } else {
+                // 下位半分：敗北側の計算 (-)
+                change = Math.round(-loseBase * ((position - 0.5) * 2));
+            }
+
+            // 🔥 【死神保険】
+            // 計算の丸め誤差などで「1位なのに0」や「最下位なのにプラス」になる異常を防ぐ最終ロック
+            if (rank === 1 && change <= 0) change = winBase;
+            if (rank === totalPlayers && change >= 0) change = -loseBase;
+
+            console.log(`📊 [Logic] 計算結果 -> 参照トロフィー:${t}, 基礎ペナルティ:${basePenalty}, 倍率:${penaltyScale}, 最終増減:${change}`);
+
+            return change;
         }
-
-        let change = 0;
-        if (position < 0.5) {
-            change = Math.round(winBase * (1 - position * 2));
-        } else {
-            change = Math.round(-loseBase * ((position - 0.5) * 2));
-        }
-
-        return change;
-    }
 
     /**
      * ゲーム終了時の処理（リザルト画面表示とデータ保存）
      */
-        /**
-        * ゲーム終了時の処理（リザルト画面表示とデータ保存）
-        */
-        _finishGame() {
+    _finishGame() {
         if (this.isGameOver) return;
         this.isGameOver = true;
         console.log("🏁 [Logic] ゲーム終了！表彰台を生成します。");
@@ -1145,46 +1171,52 @@
         let myTrophyChange = 0;
 
         if (myPlayer) {
-            myTrophyChange = this._calculateTrophyChange(
-                myPlayer.rank,
-                this.totalPlayers,
-                myPlayer.trophies,
-            );
-            console.log(
-                `📡 [Logic] トロフィー確定！変動=${myTrophyChange}。即座にサーバーへ保存します！`,
-            );
-
-            if (window.socket) {
-                window.socket.emit("updateGameResult", {
-                    trophyChange: myTrophyChange,
-                });
-            }
-
-            const matchOpponents = this.rankedPlayers.map((p) => ({
-                id: String(p.id),
-                name: p.nickname || "Unknown",
-                level: p.level || 1,
-                rank: p.rank,
-            }));
-
-            const historyPayload = {
-                userId: this.localPlayerId,
-                matchData: {
-                    rank: myPlayer.rank,
-                    result: myPlayer.rank === 1 ? "WIN" : "LOSE",
-                    trophies: myPlayer.trophies + myTrophyChange,
-                    trophyChange: myTrophyChange,
-                    mode: "Ochiruna",
-                    timestamp: Date.now(),
-                    opponents: matchOpponents,
-                },
-            };
-
-            if (window.socket) {
-                console.log(
-                    `📜 [Logic] バトル履歴データを即座にサーバーへ送信します...`,
+            // 🌟 AI（練習）モードの場合はトロフィー変動を0にし、サーバー通信を一切おこなわない
+            if (window.isPracticeMode) {
+                console.log("🤖 [Logic] AI（練習）モードのため、トロフィー変動とサーバーへの履歴保存をスキップします。");
+                myTrophyChange = 0;
+            } else {
+                myTrophyChange = this._calculateTrophyChange(
+                    myPlayer.rank,
+                    this.totalPlayers,
+                    myPlayer.trophies,
                 );
-                window.socket.emit("saveMatchHistory", historyPayload);
+                console.log(
+                    `📡 [Logic] トロフィー確定！変動=${myTrophyChange}。即座にサーバーへ保存します！`,
+                );
+
+                if (window.socket) {
+                    window.socket.emit("updateGameResult", {
+                        trophyChange: myTrophyChange,
+                    });
+                }
+
+                const matchOpponents = this.rankedPlayers.map((p) => ({
+                    id: String(p.id),
+                    name: p.nickname || "Unknown",
+                    level: p.level || 1,
+                    rank: p.rank,
+                }));
+
+                const historyPayload = {
+                    userId: this.localPlayerId,
+                    matchData: {
+                        rank: myPlayer.rank,
+                        result: myPlayer.rank === 1 ? "WIN" : "LOSE",
+                        trophies: myPlayer.trophies + myTrophyChange,
+                        trophyChange: myTrophyChange,
+                        mode: "Ochiruna",
+                        timestamp: Date.now(),
+                        opponents: matchOpponents,
+                    },
+                };
+
+                if (window.socket) {
+                    console.log(
+                        `📜 [Logic] バトル履歴データを即座にサーバーへ送信します...`,
+                    );
+                    window.socket.emit("saveMatchHistory", historyPayload);
+                }
             }
         }
 
@@ -1203,14 +1235,21 @@
         const listWrapper = document.createElement("ul");
         listWrapper.style.marginTop = "20px";
 
-        this.rankedPlayers.forEach((p) => {
-            const isMe = String(p.id) === this.localPlayerId;
-            const trophyChange = this._calculateTrophyChange(
-                p.rank,
-                this.totalPlayers,
-                p.trophies,
-            );
-            const sign = trophyChange > 0 ? "+" : "";
+            this.rankedPlayers.forEach((p) => {
+                const isMe = String(p.id) === this.localPlayerId;
+
+                // 🌟 UI表示用の変動値計算（AIモードで自分の場合は強制的に0にする）
+                let trophyChange = 0;
+                if (isMe && window.isPracticeMode) {
+                    trophyChange = 0;
+                } else {
+                    trophyChange = this._calculateTrophyChange(
+                        p.rank,
+                        this.totalPlayers,
+                        p.trophies,
+                    );
+                }
+                const sign = trophyChange > 0 ? "+" : "";
             const color =
                 trophyChange > 0
                     ? "var(--accent-blue-dark)"
@@ -1245,34 +1284,79 @@
         const countdownText = document.createElement("p");
         countdownText.style.color = "var(--text-light)";
         countdownText.style.fontWeight = "bold";
-        countdownText.innerHTML = "10秒後にホームへ戻ります...";
+        countdownText.style.marginTop = "15px";
+        countdownText.innerHTML = "10秒後に自動でホームへ戻ります...";
         modalContent.appendChild(countdownText);
+
+        // 🌟【NEW】手動でホームに戻るボタンを追加（一切の妥協なし）
+        const returnBtn = document.createElement("button");
+        returnBtn.innerHTML = "🏠 今すぐホームへ戻る";
+        Object.assign(returnBtn.style, {
+            marginTop: "10px",
+            padding: "12px 24px",
+            fontSize: "1.1rem",
+            fontWeight: "bold",
+            cursor: "pointer",
+            backgroundColor: "var(--accent-blue)",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            boxShadow: "0 4px 6px rgba(0,0,0,0.2)",
+            transition: "transform 0.1s, filter 0.1s"
+        });
+        returnBtn.onmouseover = () => returnBtn.style.filter = "brightness(1.1)";
+        returnBtn.onmouseout = () => returnBtn.style.filter = "brightness(1)";
+        returnBtn.onmousedown = () => returnBtn.style.transform = "scale(0.95)";
+        returnBtn.onmouseup = () => returnBtn.style.transform = "scale(1)";
+        modalContent.appendChild(returnBtn);
 
         modalOverlay.appendChild(modalContent);
         document.body.appendChild(modalOverlay);
 
         let timeLeft = 10;
-        const timerInterval = setInterval(() => {
+        let timerInterval;
+
+        // 🌟 帰還処理を関数化し、手動クリックとタイマーの両方で安全に呼び出せるようにする
+        const returnToHome = () => {
+            if (timerInterval) clearInterval(timerInterval);
+            if (document.body.contains(modalOverlay)) {
+                modalOverlay.remove();
+            }
+
+            const gameContainer = document.getElementById("game-container");
+            if (gameContainer) gameContainer.style.display = "none";
+
+            const authScreen = document.getElementById("auth-screen");
+            const homeScreen = document.getElementById("home-screen");
+
+            // 🔥 【バグ修正】replaceの不発を防ぐため、確実にremoveとaddを行い、万が一のstyleも上書き！妥協一切なし！
+            if (authScreen) {
+                authScreen.classList.remove("active");
+                authScreen.classList.add("hidden");
+                authScreen.style.display = "none";
+            }
+            if (homeScreen) {
+                homeScreen.classList.remove("hidden");
+                homeScreen.classList.add("active");
+                homeScreen.style.display = ""; 
+                if (window.getComputedStyle(homeScreen).display === "none") {
+                    homeScreen.style.display = "block";
+                }
+            }
+
+            console.log("🏠 [Logic] ホーム画面へシームレスに帰還しました！(データは既にセーブ済みです)");
+        };
+
+        // ボタンクリック時に即座に帰還
+        returnBtn.onclick = returnToHome;
+
+        // 既存のタイマーロジック（時間切れでも安全に帰還）
+        timerInterval = setInterval(() => {
             timeLeft--;
-            countdownText.innerHTML = `${timeLeft}秒後にホームへ戻ります...`;
+            countdownText.innerHTML = `${timeLeft}秒後に自動でホームへ戻ります...`;
 
             if (timeLeft <= 0) {
-                clearInterval(timerInterval);
-                modalOverlay.remove();
-
-                const gameContainer = document.getElementById("game-container");
-                if (gameContainer) gameContainer.style.display = "none";
-
-                const authScreen = document.getElementById("auth-screen");
-                const homeScreen = document.getElementById("home-screen");
-                if (authScreen)
-                    authScreen.classList.replace("active", "hidden");
-                if (homeScreen)
-                    homeScreen.classList.replace("hidden", "active");
-
-                console.log(
-                    "🏠 [Logic] ホーム画面へシームレスに帰還しました！(データは既にセーブ済みです)",
-                );
+                returnToHome();
             }
         }, 1000);
     }

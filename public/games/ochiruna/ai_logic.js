@@ -1,13 +1,14 @@
 /**
  * ==================================================================================
- * 🤖 Ochiruna - AI Logic Manager (物理エンジン完全同期・高機動対応・フリーズ修正版)
+ * 🤖 Ochiruna - AI Logic Manager (完全同期・高機動対応・フリーズ修正・超回避版)
  * ==================================================================================
  * [修正・維持ポイント]
- * - 🐛 停止バグ修正：物理エンジンが要求する getMovementVector 等のメソッドをクラス直下に完全復旧。
- * - 🚀 Speed/Power同期：p.currentStats.speed/power (80) へ直接アクセスし完全同期。
- * - 判定ロジック修正：物理エンジンのステータス("normal", "touched")を正確に認識。
- * - 慣性対応：Speed 80 の高速移動に合わせ、ターゲット到達判定と未来予測距離を拡張。
- * - 全機能維持：引きこもり防止、フェイルセーフ、階層移動、予測ジャンプは一切削らず最適化。
+ * - 🐛 停止バグ修正：物理エンジンが要求するインターフェースは全て完全維持。
+ * - 🚀 Speed/Power同期：p.currentStats.speed/power (80) への直接アクセス完全維持。
+ * - 🧠 穴落ち防止1 (ペナルティ選定)：消えかけ(touched)のタイルへの突撃を防止。
+ * - 🧠 【極・強化】穴落ち防止2 (マルチスキャン)：接地時のみ発動。進行方向を3レーン×5段階でスキャンし角抜けを完全防止。
+ * - 🧠 【NEW】慣性ブレーキ：ジャンプ時の飛びすぎを防ぐため、踏み切り時に入力を減速。
+ * - 全機能維持：引きこもり防止、フェイルセーフ、階層移動等は一切削らず最適化。
  * ==================================================================================
  */
 
@@ -84,9 +85,10 @@ class OchirunaAI {
                     myCurrentTile = tile;
                 }
 
-                // 🌟数値の0ではなく、文字列の状態をチェック
+                // 🌟 穴落ち防止1: "touched" (消えかけ) にはペナルティを与え、極力選ばないようにする
                 if (tile.state === "normal" || tile.state === "touched") {
-                    safeTilesOnLayer.push({ tile, distSq });
+                    const sortScore = distSq + (tile.state === "touched" ? 99999 : 0);
+                    safeTilesOnLayer.push({ tile, distSq, sortScore });
                 }
             }
         }
@@ -109,8 +111,8 @@ class OchirunaAI {
             const isCurrentSafe = (myCurrentTile && myCurrentDistSq < 400 && (myCurrentTile.state === "normal" || myCurrentTile.state === "touched"));
 
             if (!isCurrentSafe && safeTilesOnLayer.length > 0) {
-                // 緊急避難：最も近い安全なタイルへ
-                safeTilesOnLayer.sort((a, b) => a.distSq - b.distSq);
+                // 緊急避難：最も近い（かつ極力消えかけていない）安全なタイルへ
+                safeTilesOnLayer.sort((a, b) => a.sortScore - b.sortScore);
                 this.targetTile = safeTilesOnLayer[0].tile;
                 this.targetOffset = { x: 0, z: 0 };
             } else if (isCurrentSafe && safeTilesOnLayer.length > 1) {
@@ -118,7 +120,7 @@ class OchirunaAI {
                 const otherSafeTiles = safeTilesOnLayer.filter(t => t.tile !== myCurrentTile);
 
                 if (otherSafeTiles.length > 0) {
-                    otherSafeTiles.sort((a, b) => a.distSq - b.distSq);
+                    otherSafeTiles.sort((a, b) => a.sortScore - b.sortScore);
                     const searchRange = Math.min(otherSafeTiles.length, 5);
                     const randomIdx = Math.floor(Math.random() * searchRange);
                     this.targetTile = otherSafeTiles[randomIdx].tile;
@@ -180,45 +182,67 @@ class OchirunaAI {
         const layerGap = this.logic.CONSTANTS?.LAYER_GAP || 20;
         const botLayer = Math.max(0, Math.round(-currentY / layerGap));
 
-        // 🌟機能維持：落下時の足掻きジャンプ
+        // 🌟機能維持：落下時の足掻きジャンプ（※仕様通り完全維持）
         if (typeof this.bot.vy === 'number' && this.bot.vy < -2.0) {
             if (this.aiLevel === 'easy' && Math.random() < 0.6) return;
             this.isJumping = true;
             return; 
         }
 
-        // 🌟未来予測ジャンプ：Speed 80 の慣性を考慮
-        if (this.aiLevel === 'hard' || this.aiLevel === 'normal') {
+        // 🌟 穴落ち防止2: 接地時のみ未来予測を「線から面（マルチスキャン）」に拡張して行う
+        if (this.bot.isGrounded && (this.aiLevel === 'hard' || this.aiLevel === 'normal')) {
             const speedSq = this.currentInput.x ** 2 + this.currentInput.z ** 2;
 
             if (speedSq > 0.01) {
-                const predictionMultiplier = this.aiLevel === 'hard' ? 35 : 28; 
-                const futureX = this.bot.x + (this.currentInput.x * predictionMultiplier);
-                const futureZ = this.bot.z + (this.currentInput.z * predictionMultiplier);
+                const predictionMultiplier = this.aiLevel === 'hard' ? 40 : 32; // Speed 80に合わせて延長
+                const steps = 5; // 軌道上を5分割してスキャンし、途中の穴を見逃さない
+                let holeDetected = false;
 
-                let closestFutureTile = null;
-                let minFutureDistSq = Infinity;
+                // 進行方向に対して左右に幅を持たせるためのベクトル（タイルの角抜け防止）
+                const sideOffsetX = -this.currentInput.z * 0.35;
+                const sideOffsetZ = this.currentInput.x * 0.35;
 
-                for (const tile of this.logic.tiles.values()) {
-                    if (tile.layer === botLayer) {
-                        const dx = tile.x - futureX;
-                        const dz = tile.z - futureZ;
-                        const distSq = dx * dx + dz * dz;
-                        if (distSq < minFutureDistSq) {
-                            minFutureDistSq = distSq;
-                            closestFutureTile = tile;
+                // 中央、左、右の「3レーン」で未来位置を確認
+                for (let lane = -1; lane <= 1; lane++) {
+                    for (let i = 1; i <= steps; i++) {
+                        const stepMult = (predictionMultiplier / steps) * i;
+                        const futureX = this.bot.x + (this.currentInput.x * stepMult) + (sideOffsetX * lane);
+                        const futureZ = this.bot.z + (this.currentInput.z * stepMult) + (sideOffsetZ * lane);
+
+                        let closestFutureTile = null;
+                        let minFutureDistSq = Infinity;
+
+                        for (const tile of this.logic.tiles.values()) {
+                            if (tile.layer === botLayer) {
+                                const dx = tile.x - futureX;
+                                const dz = tile.z - futureZ;
+                                const distSq = dx * dx + dz * dz;
+                                if (distSq < minFutureDistSq) {
+                                    minFutureDistSq = distSq;
+                                    closestFutureTile = tile;
+                                }
+                            }
+                        }
+
+                        // 軌道上のどこか1箇所でも足場がない、消えかけ、または遠すぎる場合はジャンプ！
+                        if (!closestFutureTile || (closestFutureTile.state !== "normal" && closestFutureTile.state !== "touched") || minFutureDistSq > 1200) {
+                            holeDetected = true;
+                            break; 
                         }
                     }
+                    if (holeDetected) break; // 1レーンでも穴を見つけたら即ジャンプ体制へ
                 }
 
-                // 🌟判定距離(1200)は Speed 80 の移動ベクトル量に対して最適化。
-                if (!closestFutureTile || (closestFutureTile.state !== "normal" && closestFutureTile.state !== "touched") || minFutureDistSq > 1200) {
+                if (holeDetected) {
                     this.isJumping = true;
+                    // 🌟【NEW】慣性ブレーキ：Speed 80で飛び越えすぎないよう、ジャンプと同時に入力を絞る
+                    this.currentInput.x *= 0.3;
+                    this.currentInput.z *= 0.3;
                 }
             }
         }
 
-        // 遠距離ジャンプ（機能維持）
+        // 遠距離ジャンプ（機能維持・接地判定強化）
         if (this.targetTile && !this.isJumping && this.bot.isGrounded) {
             const dx = this.targetTile.x - this.bot.x;
             const dz = this.targetTile.z - this.bot.z;

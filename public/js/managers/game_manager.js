@@ -56,7 +56,8 @@ function startGame(io) {
         id: p.userId, 
         socketId: p.socket.id, // ★追加：AさんがBさんを操縦するバグを根絶する！
         nickname: p.nickname,
-        equipped: p.equipped
+        equipped: p.equipped,
+        trophies: p.trophies // 👈 【これを追加！！！】絶対に逃さない！
     }));
 
     waitingPlayers.forEach(p => {
